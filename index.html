@@ -1046,6 +1046,13 @@
                        && request.resource.data.comment is string && request.resource.data.comment.size() <= 500;
          allow update, delete: if request.auth != null && request.auth.uid == "8mzcKILkb8SzhQQPjAvoox4OpfM2";
        } */
+
+  /* IMPORTANTE: la colección "carts" (carrito guardado por cuenta) necesita que
+     cada cliente solo pueda leer y escribir su propio carrito. Agrega esta regla
+     en Firebase Console > Firestore Database > Reglas:
+       match /carts/{uid} {
+         allow read, write: if request.auth != null && request.auth.uid == uid;
+       } */
 </script>
 
 <script>
@@ -1243,8 +1250,40 @@ const PAGE_SIZE = 6;
 
 let state = { activeCat:"pestanas", sub:"all", search:"", minPrice:10, maxPrice:120, sort:"default", page:1 };
 let cart = JSON.parse(localStorage.getItem("jande_cart") || "[]");
+let cartSyncing = false; // evita guardar en Firestore mientras estamos cargando el carrito del servidor
 
-function saveCart(){ localStorage.setItem("jande_cart", JSON.stringify(cart)); renderCart(); }
+function saveCart(){
+  localStorage.setItem("jande_cart", JSON.stringify(cart));
+  renderCart();
+  const u = auth.currentUser;
+  if(u && u.uid !== ADMIN_UID && !cartSyncing){
+    db.collection("carts").doc(u.uid).set({
+      items: cart,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(err=>console.warn("No se pudo guardar el carrito:", err.message));
+  }
+}
+
+/* Al iniciar sesión, trae el carrito guardado en la cuenta (si existe) y lo deja
+   como estaba. Si es la primera vez que este cliente usa un carrito con sesión
+   iniciada y ya tenía productos agregados como invitado, se los guardamos en su cuenta. */
+function loadCartForUser(user){
+  if(!user || user.uid === ADMIN_UID) return;
+  db.collection("carts").doc(user.uid).get().then(doc=>{
+    cartSyncing = true;
+    if(doc.exists && Array.isArray(doc.data().items)){
+      cart = doc.data().items;
+      localStorage.setItem("jande_cart", JSON.stringify(cart));
+      renderCart();
+    } else if(cart.length){
+      db.collection("carts").doc(user.uid).set({
+        items: cart,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(err=>console.warn("No se pudo guardar el carrito:", err.message));
+    }
+    cartSyncing = false;
+  }).catch(err=>console.warn("No se pudo cargar el carrito guardado:", err.message));
+}
 
 function getFiltered(){
   return PRODUCTS.filter(p=>{
@@ -1856,6 +1895,7 @@ auth.onAuthStateChanged(user=>{
     document.getElementById("acctName").textContent = user.displayName || "Cliente";
     document.getElementById("acctEmail").textContent = user.email;
     loadOrders(user);
+    loadCartForUser(user);
   } else {
     loadOrders(null);
     acctBtnLabel.textContent = "Mi Cuenta";
