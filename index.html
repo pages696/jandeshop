@@ -874,6 +874,17 @@
       </div>
 
       <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
+        <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 6px">Pedidos</h3>
+        <p class="admin-hint" style="margin-bottom:12px">Cambia el estado y el cliente lo verá al instante en "Mis pedidos". Se muestran los últimos 100.</p>
+        <div class="admin-table-wrap">
+          <table class="admin-table" id="adminOrdersTable">
+            <thead><tr><th>Fecha</th><th>Cliente</th><th>Productos</th><th>Total</th><th>Estado</th></tr></thead>
+            <tbody id="adminOrdersBody"><tr><td colspan="5" style="color:var(--muted)">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
         <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 14px">Cupones de descuento</h3>
         <form id="couponForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
           <div><label style="display:block;font-size:12px;margin-bottom:4px">Código</label><input type="text" id="cpCode" required style="text-transform:uppercase;padding:8px 10px;border:1px solid var(--line);border-radius:8px;width:150px"></div>
@@ -1013,7 +1024,7 @@
     </div>
     <div>
       <h4>Nosotros</h4>
-      <ul><li><a href="#" onclick="return false" data-nav="inicio">Inicio</a></li><li><a href="#" id="navNosotros">Nosotros</a></li><li><a href="#" onclick="return false">Productos</a></li><li><a href="#" id="navContacto">Contacto</a></li><li><a href="privacidad.html">Política de privacidad</a></li><li><a href="preguntas-frecuentes.html">Preguntas Frecuentes</a></li></ul>
+      <ul><li><a href="#" onclick="return false" data-nav="inicio">Inicio</a></li><li><a href="#" id="navNosotros">Nosotros</a></li><li><a href="#" onclick="return false">Productos</a></li><li><a href="#" id="navContacto">Contacto</a></li><li><a href="privacidad.html">Política de privacidad</a></li><li><a href="preguntas-frecuentes.html">Preguntas Frecuentes</a></li><li><a href="terminos.html">Términos y condiciones</a></li></ul>
       <a class="libro-reclamos" href="#" onclick="event.preventDefault(); openReclamos();">
         <svg viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M32 10C27 5 18 3 4 4v34c14-1 23 1 28 6" stroke="#173f7a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1110,6 +1121,16 @@
                        && request.resource.data.name is string && request.resource.data.name.size() <= 60
                        && request.resource.data.comment is string && request.resource.data.comment.size() <= 500;
          allow update, delete: if request.auth != null && request.auth.uid == "8mzcKILkb8SzhQQPjAvoox4OpfM2";
+       } */
+
+  /* IMPORTANTE: para el estado de pedidos, la colección "orders" necesita estas reglas
+     (el admin lee todos y actualiza el estado; cada cliente solo lee y crea los suyos):
+       match /orders/{orderId} {
+         allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+         allow read: if request.auth != null && (resource.data.uid == request.auth.uid
+                        || request.auth.uid == "8mzcKILkb8SzhQQPjAvoox4OpfM2");
+         allow update: if request.auth != null && request.auth.uid == "8mzcKILkb8SzhQQPjAvoox4OpfM2";
+         allow delete: if false;
        } */
 
   /* IMPORTANTE: la colección "carts" (carrito guardado por cuenta) necesita que
@@ -2061,9 +2082,11 @@ auth.onAuthStateChanged(user=>{
     document.getElementById("adminUserEmail").textContent = user.email;
     renderAdminProductList();
     renderAdminCouponList();
+    renderAdminOrders();
   } else {
     loginBox.style.display = "block";
     dash.style.display = "none";
+    if(adminOrdersUnsub){ adminOrdersUnsub(); adminOrdersUnsub = null; }
   }
 
   const acctBtnLabel = document.getElementById("acctBtnLabel");
@@ -2123,6 +2146,42 @@ function saveOrder(items, total, extra){
   const couponMsg = document.getElementById("couponMsg");
   if(couponMsg) couponMsg.textContent = "";
 }
+/* ===== Estados de pedido (admin cambia, cliente ve en "Mis pedidos") ===== */
+const ORDER_STATUSES = ["Enviado por WhatsApp","Pago confirmado","En preparación","En camino","Entregado","Cancelado"];
+function orderStatusColor(st){
+  return ({"Pago confirmado":"#2e8b57","En preparación":"#b8860b","En camino":"#1e6fb8","Entregado":"#2e8b57","Cancelado":"#c0392b"})[st] || "var(--gold-deep)";
+}
+let adminOrdersUnsub = null;
+function renderAdminOrders(){
+  if(adminOrdersUnsub) return;
+  adminOrdersUnsub = db.collection("orders").orderBy("createdAt","desc").limit(100).onSnapshot(snap=>{
+    const tbody = document.getElementById("adminOrdersBody");
+    if(!tbody) return;
+    if(snap.empty){ tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">Todavía no hay pedidos.</td></tr>'; return; }
+    tbody.innerHTML = snap.docs.map(d=>{
+      const o = d.data();
+      const dt = o.createdAt && o.createdAt.seconds ? new Date(o.createdAt.seconds*1000).toLocaleString("es-PE",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "Ahora";
+      const lines = (o.items||[]).map(i=>escHtml(i.name)+" ×"+i.qty).join("<br>");
+      const cur = o.status || "Enviado por WhatsApp";
+      const opts = (ORDER_STATUSES.includes(cur) ? ORDER_STATUSES : [cur].concat(ORDER_STATUSES))
+        .map(st=>'<option value="'+escHtml(st)+'"'+(st===cur?' selected':'')+'>'+escHtml(st)+'</option>').join("");
+      return '<tr>'
+        + '<td style="white-space:nowrap">'+dt+'</td>'
+        + '<td>'+escHtml(o.email||"—")+'</td>'
+        + '<td style="font-size:12.5px">'+lines+'</td>'
+        + '<td style="white-space:nowrap"><b>S/'+Number(o.total||0).toFixed(2)+'</b></td>'
+        + '<td><select onchange="updateOrderStatus(\''+d.id+'\', this.value)" style="padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px;color:'+orderStatusColor(cur)+';font-weight:600">'+opts+'</select></td>'
+        + '</tr>';
+    }).join("");
+  }, err=>{
+    const tbody = document.getElementById("adminOrdersBody");
+    if(tbody) tbody.innerHTML = '<tr><td colspan="5" style="color:#c0392b">No se pudieron cargar los pedidos (revisa las reglas de Firestore): '+escHtml(err.message)+'</td></tr>';
+  });
+}
+function updateOrderStatus(id, status){
+  db.collection("orders").doc(id).update({status: status, statusUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()})
+    .catch(err=>alert("No se pudo actualizar el estado: "+err.message));
+}
 let ordersUnsub = null;
 function escHtml(s){ return String(s).replace(/[&<>"']/g, ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch])); }
 function loadOrders(user){
@@ -2140,7 +2199,7 @@ function loadOrders(user){
       return '<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px">'
         + '<div style="display:flex;justify-content:space-between;gap:8px"><b>'+dt+'</b><b>S/'+Number(o.total||0).toFixed(2)+'</b></div>'
         + '<div style="margin:6px 0;color:var(--muted)">'+lines+'</div>'
-        + '<span style="font-size:12px;color:var(--gold-deep)">'+escHtml(o.status||"Pendiente")+'</span></div>';
+        + '<span style="font-size:12px;font-weight:600;color:'+orderStatusColor(o.status)+'">'+escHtml(o.status||"Pendiente")+'</span></div>';
     }).join("");
   }, err=>{ box.innerHTML = '<p style="color:var(--muted)">No se pudo cargar el historial.</p>'; console.warn(err.message); });
 }
