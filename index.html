@@ -888,14 +888,16 @@
         <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 14px">Cupones de descuento</h3>
         <form id="couponForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
           <div><label style="display:block;font-size:12px;margin-bottom:4px">Código</label><input type="text" id="cpCode" required style="text-transform:uppercase;padding:8px 10px;border:1px solid var(--line);border-radius:8px;width:150px"></div>
-          <div><label style="display:block;font-size:12px;margin-bottom:4px">Descuento %</label><input type="number" id="cpPercent" min="1" max="90" required style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;width:90px"></div>
+          <div><label style="display:block;font-size:12px;margin-bottom:4px">Tipo</label><select id="cpType" onchange="cpTypeChanged()" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit"><option value="percent">Porcentaje (%)</option><option value="fixed">Monto fijo (S/)</option></select></div>
+          <div><label id="cpValueLabel" style="display:block;font-size:12px;margin-bottom:4px">Descuento %</label><input type="number" id="cpPercent" min="1" max="90" step="any" required style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;width:100px"></div>
+          <div><label style="display:block;font-size:12px;margin-bottom:4px">Vence (opcional)</label><input type="date" id="cpExpires" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit"></div>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;padding-bottom:9px"><input type="checkbox" id="cpActive" checked> Activo</label>
           <button type="submit" class="pd-buy">Guardar código</button>
           <span class="admin-msg" id="cpMsg"></span>
         </form>
         <div class="admin-table-wrap">
           <table class="admin-table" id="couponTable">
-            <thead><tr><th>Código</th><th>Descuento</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th>Código</th><th>Descuento</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
             <tbody id="couponTableBody"></tbody>
           </table>
         </div>
@@ -1790,12 +1792,12 @@ function renderCart(){
   }
   const SHIPPING_COST = 13;
   const subtotal = cart.reduce((s,c)=>s+c.price*c.qty,0);
-  const discount = (appliedCoupon && cart.length) ? subtotal * appliedCoupon.percent/100 : 0;
+  const discount = (appliedCoupon && cart.length) ? couponDiscount(appliedCoupon, subtotal) : 0;
   document.getElementById("cartSubtotal").textContent = "S/"+subtotal.toFixed(2);
   const discRow = document.getElementById("cartDiscountRow");
   if(discount > 0){
     discRow.style.display = "flex";
-    document.getElementById("cartDiscountLabel").textContent = `Descuento (${appliedCoupon.code} -${appliedCoupon.percent}%)`;
+    document.getElementById("cartDiscountLabel").textContent = `Descuento (${appliedCoupon.code} ${couponLabel(appliedCoupon)})`;
     document.getElementById("cartDiscount").textContent = "-S/"+discount.toFixed(2);
   } else {
     discRow.style.display = "none";
@@ -1805,7 +1807,26 @@ function renderCart(){
   document.getElementById("checkoutBtn").disabled = cart.length===0;
 }
 
-let appliedCoupon = null; // {code, percent}
+/* ===== Cupones: porcentaje o monto fijo, con vencimiento opcional =====
+   Los cupones antiguos (solo "percent") siguen funcionando. */
+function couponNorm(d){
+  const type = d.type === "fixed" ? "fixed" : "percent";
+  const value = Number(type === "fixed" ? d.value : (d.value != null ? d.value : d.percent));
+  return { type, value, expiresAt: d.expiresAt || null };
+}
+function couponExpired(expiresAt){
+  if(!expiresAt) return false;
+  return Date.now() > new Date(expiresAt + "T23:59:59-05:00").getTime(); // valido todo el dia (hora de Peru)
+}
+function couponDiscount(c, subtotal){
+  if(!c) return 0;
+  const d = c.type === "fixed" ? c.value : subtotal * c.value / 100;
+  return Math.min(Math.max(0, d), subtotal);
+}
+function couponLabel(c){ return c.type === "fixed" ? "-S/" + c.value.toFixed(2) : "-" + c.value + "%"; }
+function fmtCouponDate(iso){ const p = String(iso).split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : iso; }
+
+let appliedCoupon = null; // {code, type, value}
 function applyCoupon(){
   const input = document.getElementById("couponInput");
   const code = input.value.trim().toUpperCase();
@@ -1813,10 +1834,16 @@ function applyCoupon(){
   if(!code){ msgEl.style.color = "#c0392b"; msgEl.textContent = "Ingresa un código."; return; }
   msgEl.style.color = "var(--muted)"; msgEl.textContent = "Validando...";
   db.collection("coupons").doc(code).get().then(doc=>{
-    if(doc.exists && doc.data().active && Number(doc.data().percent) > 0){
-      appliedCoupon = { code, percent: Number(doc.data().percent) };
+    const d = doc.exists ? doc.data() : null;
+    const n = d ? couponNorm(d) : null;
+    if(d && d.active && n.value > 0 && couponExpired(n.expiresAt)){
+      appliedCoupon = null;
+      msgEl.style.color = "#c0392b";
+      msgEl.textContent = "Este cupón venció el " + fmtCouponDate(n.expiresAt) + ".";
+    } else if(d && d.active && n.value > 0){
+      appliedCoupon = { code, type: n.type, value: n.value };
       msgEl.style.color = "#2e8b57";
-      msgEl.innerHTML = `Código <b>${code}</b> aplicado: -${appliedCoupon.percent}% &nbsp;<a href="#" onclick="event.preventDefault();removeCoupon()" style="color:#c0392b">Quitar</a>`;
+      msgEl.innerHTML = `Código <b>${code}</b> aplicado: ${couponLabel(appliedCoupon)} &nbsp;<a href="#" onclick="event.preventDefault();removeCoupon()" style="color:#c0392b">Quitar</a>`;
     } else {
       appliedCoupon = null;
       msgEl.style.color = "#c0392b";
@@ -1842,12 +1869,12 @@ function checkout(){
   if(cart.length===0) return;
   const SHIPPING_COST = 13;
   const subtotal = cart.reduce((s,c)=>s+c.price*c.qty,0);
-  const discount = appliedCoupon ? subtotal * appliedCoupon.percent/100 : 0;
+  const discount = appliedCoupon ? couponDiscount(appliedCoupon, subtotal) : 0;
   const total = Math.max(0, subtotal-discount) + SHIPPING_COST;
   if(window.track) track("begin_checkout",{id:"cart",name:"Carrito",price:0,qty:cart.length,value:total});
   const lines = cart.map(c=>`• ${c.name} x${c.qty} — S/${(c.price*c.qty).toFixed(2)}`).join("%0A");
   let msg = `Hola Jandé Shop! Quiero hacer este pedido:%0A${lines}%0A%0ASubtotal: S/${subtotal.toFixed(2)}`;
-  if(discount > 0) msg += `%0ADescuento (${appliedCoupon.code} -${appliedCoupon.percent}%25): -S/${discount.toFixed(2)}`;
+  if(discount > 0) msg += `%0ADescuento (${appliedCoupon.code} ${encodeURIComponent(couponLabel(appliedCoupon))}): -S/${discount.toFixed(2)}`;
   msg += `%0AEnvío: S/${SHIPPING_COST.toFixed(2)}%0ATotal: S/${total.toFixed(2)}`;
   window.open(`https://wa.me/51950090088?text=${msg}`, "_blank");
   saveOrder(cart, total, { shipping: SHIPPING_COST, couponCode: appliedCoupon ? appliedCoupon.code : null, discount: discount });
@@ -2289,6 +2316,19 @@ function renderAdminProductList(){
 
 /* ===== Cupones de descuento ===== */
 let COUPONS = [];
+function couponStatusCell(c){
+  const n = couponNorm(c);
+  let txt = "Activo", col = "#2e8b57";
+  if(!c.active){ txt = "Inactivo"; col = "#c0392b"; }
+  else if(couponExpired(n.expiresAt)){ txt = "Vencido"; col = "#b8860b"; }
+  return '<td style="color:'+col+';font-weight:600">'+txt+'</td>';
+}
+function cpTypeChanged(){
+  const fixed = document.getElementById("cpType").value === "fixed";
+  document.getElementById("cpValueLabel").textContent = fixed ? "Monto S/" : "Descuento %";
+  const inp = document.getElementById("cpPercent");
+  inp.min = "1"; inp.max = fixed ? "500" : "90";
+}
 let couponsUnsub = null;
 function renderAdminCouponList(){
   if(couponsUnsub) return; // ya suscrito
@@ -2299,19 +2339,24 @@ function renderAdminCouponList(){
     tbody.innerHTML = COUPONS.length ? COUPONS.map(c=>`
       <tr>
         <td><b>${c.code}</b></td>
-        <td>-${c.percent}%</td>
-        <td style="color:${c.active?'#2e8b57':'#c0392b'};font-weight:600">${c.active?'Activo':'Inactivo'}</td>
+        <td>${couponLabel(couponNorm(c))}</td>
+        <td>${c.expiresAt ? fmtCouponDate(c.expiresAt) : "<span style=\"color:var(--muted)\">Sin vencimiento</span>"}</td>
+        ${couponStatusCell(c)}
         <td style="text-align:right;white-space:nowrap">
           <button class="admin-edit" onclick="editCoupon('${c.code}')">Editar</button>
           <button class="admin-del" onclick="deleteCoupon('${c.code}')">Eliminar</button>
         </td>
-      </tr>`).join("") : `<tr><td colspan="4" style="color:var(--muted)">Todavía no tienes cupones creados.</td></tr>`;
+      </tr>`).join("") : `<tr><td colspan="5" style="color:var(--muted)">Todavía no tienes cupones creados.</td></tr>`;
   }, err=>console.warn("No se pudieron cargar los cupones:", err.message));
 }
 function editCoupon(code){
   const c = COUPONS.find(x=>x.code===code); if(!c) return;
   document.getElementById("cpCode").value = c.code;
-  document.getElementById("cpPercent").value = c.percent;
+  const n = couponNorm(c);
+  document.getElementById("cpType").value = n.type;
+  cpTypeChanged();
+  document.getElementById("cpPercent").value = n.value;
+  document.getElementById("cpExpires").value = c.expiresAt || "";
   document.getElementById("cpActive").checked = !!c.active;
   document.getElementById("cpCode").scrollIntoView({behavior:"smooth", block:"center"});
 }
@@ -2322,17 +2367,20 @@ function deleteCoupon(code){
 document.getElementById("couponForm").addEventListener("submit", e=>{
   e.preventDefault();
   const code = document.getElementById("cpCode").value.trim().toUpperCase();
-  const percent = Number(document.getElementById("cpPercent").value);
+  const type = document.getElementById("cpType").value === "fixed" ? "fixed" : "percent";
+  const value = Number(document.getElementById("cpPercent").value);
+  const expiresAt = document.getElementById("cpExpires").value || null;
   const active = document.getElementById("cpActive").checked;
   const msgEl = document.getElementById("cpMsg");
-  if(!code || !percent || percent<=0 || percent>90){ msgEl.style.color="#c0392b"; msgEl.textContent="Revisa el código y el porcentaje (1-90)."; return; }
-  db.collection("coupons").doc(code).set({
-    percent, active, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  }).then(()=>{
+  if(!code || !value || value<=0 || (type==="percent" && value>90) || (type==="fixed" && value>500)){ msgEl.style.color="#c0392b"; msgEl.textContent = type==="fixed" ? "Revisa el código y el monto (S/1 a S/500)." : "Revisa el código y el porcentaje (1-90)."; return; }
+  const payload = { type, value, expiresAt, active, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  if(type === "percent") payload.percent = value; // compatible con cupones/versiones antiguas
+  db.collection("coupons").doc(code).set(payload).then(()=>{
     msgEl.style.color = "#2e8b57";
     msgEl.textContent = `Cupón ${code} guardado.`;
     document.getElementById("couponForm").reset();
     document.getElementById("cpActive").checked = true;
+    cpTypeChanged();
   }).catch(err=>{ msgEl.style.color="#c0392b"; msgEl.textContent = "Error: "+err.message; });
 });
 
