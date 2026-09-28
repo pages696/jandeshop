@@ -1251,6 +1251,7 @@ const PAGE_SIZE = 6;
 let state = { activeCat:"pestanas", sub:"all", search:"", minPrice:10, maxPrice:120, sort:"default", page:1 };
 let cart = JSON.parse(localStorage.getItem("jande_cart") || "[]");
 let cartSyncing = false; // evita guardar en Firestore mientras estamos cargando el carrito del servidor
+let cartWasLoggedIn = false; // detecta un cierre de sesión real (no la carga inicial de la página)
 
 function saveCart(){
   localStorage.setItem("jande_cart", JSON.stringify(cart));
@@ -1896,11 +1897,20 @@ auth.onAuthStateChanged(user=>{
     document.getElementById("acctEmail").textContent = user.email;
     loadOrders(user);
     loadCartForUser(user);
+    cartWasLoggedIn = true;
   } else {
     loadOrders(null);
     acctBtnLabel.textContent = "Mi Cuenta";
     acctLoggedOut.style.display = "block";
     acctLoggedIn.style.display = "none";
+    // Si el cliente acaba de cerrar sesión (no es la carga inicial de la página),
+    // se limpia el carrito de la pantalla; en su cuenta queda guardado igual.
+    if(cartWasLoggedIn){
+      cart = [];
+      localStorage.setItem("jande_cart", "[]");
+      renderCart();
+    }
+    cartWasLoggedIn = false;
   }
 
   const newsletterSection = document.getElementById("newsletterSection");
