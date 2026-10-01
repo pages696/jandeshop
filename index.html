@@ -418,6 +418,14 @@
   .hero-dots{position:absolute;bottom:14px;left:0;right:0;display:flex;justify-content:center;gap:8px}
   .hero-dots button{width:8px;height:8px;border-radius:50%;border:0;background:var(--line);cursor:pointer;padding:0}
   .hero-dots button.active{background:var(--gold-deep)}
+  .he-card{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:var(--panel)}
+  .he-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+  .he-thumb{width:64px;height:64px;border-radius:50%;object-fit:cover;background:var(--blush);border:1px solid var(--line);flex-shrink:0}
+  .he-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:760px){ .he-grid{grid-template-columns:1fr} }
+  .he-grid label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .he-grid input,.he-grid select,.he-grid textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit}
+  .he-full{grid-column:1/-1}
 
   .promo-tiles{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1180px;margin:36px auto;padding:0 20px}
   @media (max-width:640px){ .promo-tiles{grid-template-columns:1fr} }
@@ -891,6 +899,18 @@
             <thead><tr><th>Código</th><th>Descuento</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
             <tbody id="couponTableBody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
+        <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 6px">Banner del inicio (carrusel)</h3>
+        <p class="admin-hint" style="margin-bottom:14px">Edita los textos, el botón y la imagen de cada diapositiva. Al subir una foto se recorta y ajusta sola a 600 × 600 px (cuadrada, se ve en un círculo).</p>
+        <div id="heroEditor"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
+          <button type="button" class="pd-back" onclick="heroEditAdd()">+ Agregar diapositiva</button>
+          <button type="button" class="pd-buy" onclick="heroEditSave()">Guardar banner</button>
+          <button type="button" class="pd-back" onclick="heroEditRestore()">Restaurar originales</button>
+          <span class="admin-msg" id="heroEditMsg"></span>
         </div>
       </div>
     </div>
@@ -1958,29 +1978,156 @@ document.querySelector(".hero-strip .back").addEventListener("click", goHome);
 
 // Para cambiar la imagen de cada diapositiva, edita el campo img (recomendado: 600 x 600 px, cuadrada, JPG/WebP/PNG, menos de 150 KB).
 // Si la imagen no existe o falla, se muestra el ícono automáticamente.
-const HERO_SLIDES = [
+let HERO_SLIDES = [
   {eyebrow:"BELLEZA INTEGRAL", title:"Todo tu ritual de belleza en un solo lugar", text:"Piel, cabello, manos, pies y mirada: descubre nuestro catálogo completo de belleza.", cta:"Ver categorías", sub:"all", icon:"kit", img:"images/hero-1.jpg"},
   {eyebrow:"NUEVO", title:"Kit Iniciación Lash Lift", text:"Todo lo que necesitas para tu primer lifting de pestañas, en un solo kit profesional.", cta:"Ver kit", sub:"kit-lifting", icon:"kit", img:"images/producto-5-kit-lashlift.jpg"},
   {eyebrow:"CUIDADO DIARIO", title:"Fortalece tu Mirada", text:"Sérum fortalecedor pensado para pestañas más sanas, con uso diario y resultados visibles.", cta:"Ver primer de pestañas", sub:"primer-pestanas", icon:"serum", img:"images/producto-3-serum.jpg"},
   {eyebrow:"TENDENCIA", title:"Volumen Ruso al Instante", text:"Pestañas postizas de alto volumen, listas para lashistas y para uso personal.", cta:"Ver pestañas postizas", sub:"pestanas-postiza", icon:"postizas", img:"images/producto-1-pestanas-postizas.jpg"}
 ];
+HERO_SLIDES.forEach(x=>{ x.eyebrow += " · JANDÉ SHOP"; });
+const HERO_DEFAULTS = JSON.parse(JSON.stringify(HERO_SLIDES));
 let heroIndex = 0, heroTimer;
 function renderHero(){
   document.getElementById("heroSlides").innerHTML = HERO_SLIDES.map((s,i)=>`
     <div class="hero-slide ${i===heroIndex?"active":""}">
       <div>
-        <div class="hero-eyebrow">${s.eyebrow} · JANDÉ SHOP</div>
-        <h2>${s.title}</h2>
-        <p>${s.text}</p>
-        <button class="hero-cta" onclick="goShop('${s.sub}')">${s.cta}</button>
+        <div class="hero-eyebrow">${escapeHtml(s.eyebrow)}</div>
+        <h2>${escapeHtml(s.title)}</h2>
+        <p>${escapeHtml(s.text)}</p>
+        ${s.cta? `<button class="hero-cta" onclick="heroClick(${i})">${escapeHtml(s.cta)}</button>`:""}
       </div>
-      <div class="hero-visual"><div class="circle">${s.img? `<img src="${s.img}" alt="${s.title}" onerror="this.style.display='none'">`:""}${ICONS[s.icon]}</div></div>
+      <div class="hero-visual"><div class="circle">${s.img? `<img src="${escapeHtml(s.img)}" alt="${escapeHtml(s.title)}" onerror="this.style.display='none'">`:""}${ICONS[s.icon]||ICONS.kit}</div></div>
     </div>`).join("");
   document.getElementById("heroDots").innerHTML = HERO_SLIDES.map((s,i)=>`<button class="${i===heroIndex?"active":""}" onclick="heroSet(${i})" aria-label="Diapositiva ${i+1}"></button>`).join("");
+}
+function heroLinkOf(sl){ return sl.link || ("cat:"+(sl.cat||"pestanas")+"|"+(sl.sub||"all")); }
+function heroClick(i){
+  const sl = HERO_SLIDES[i]; if(!sl) return;
+  const l = heroLinkOf(sl), k = l.indexOf(":"), kind = l.slice(0,k), v = l.slice(k+1);
+  if(kind==="cat"){ const [c,sb]=v.split("|"); goShop(sb||"all", c||"pestanas"); }
+  else if(kind==="page"){ ({home:goHome, shop:()=>goShop("all"), about:openAbout, contact:openContact, reclamos:openReclamos}[v]||goHome)(); }
+  else if(kind==="product"){ openProduct(v); }
+  else if(kind==="url"){ if(/^(https?:\/\/|mailto:|tel:)/i.test(v)) window.open(v,"_blank","noopener"); }
 }
 function heroGo(delta){ heroIndex = (heroIndex + delta + HERO_SLIDES.length) % HERO_SLIDES.length; renderHero(); resetHeroTimer(); }
 function heroSet(i){ heroIndex = i; renderHero(); resetHeroTimer(); }
 function resetHeroTimer(){ clearInterval(heroTimer); heroTimer = setInterval(()=>heroGo(1), 6000); }
+
+
+/* ===== Banner del inicio: se lee de Firestore (settings/hero) y se edita desde el panel admin ===== */
+db.collection("settings").doc("hero").onSnapshot(doc=>{
+  const d = doc.exists ? doc.data() : null;
+  HERO_SLIDES = (d && Array.isArray(d.slides) && d.slides.length) ? d.slides : JSON.parse(JSON.stringify(HERO_DEFAULTS));
+  if(heroIndex >= HERO_SLIDES.length) heroIndex = 0;
+  renderHero();
+  if(!heroEditDirty) heroEditReset();
+}, err=>console.warn("No se pudo leer el banner (settings/hero). Revisa las reglas de Firestore:", err.message));
+
+let heroEdit = [], heroEditDirty = false;
+const HERO_MAX = 6;
+function heroEditReset(){
+  heroEdit = JSON.parse(JSON.stringify(HERO_SLIDES));
+  heroEditDirty = false;
+  heroEditRender();
+}
+function heroDestOptions(sel){
+  const o=(v,t)=>`<option value="${escapeHtml(v)}"${v===sel?" selected":""}>${escapeHtml(t)}</option>`;
+  let h = `<optgroup label="Páginas de la tienda">`+o("page:home","Inicio")+o("page:shop","Todo el catálogo")+o("page:about","Nosotros")+o("page:contact","Contacto")+o("page:reclamos","Libro de reclamaciones")+`</optgroup>`;
+  Object.keys(CATEGORIES).forEach(cat=>{
+    h += `<optgroup label="${escapeHtml(CATEGORIES[cat].label)}">` + Object.keys(CATEGORIES[cat].subs).map(sub=>o("cat:"+cat+"|"+sub, CATEGORIES[cat].subs[sub])).join("") + `</optgroup>`;
+  });
+  h += `<optgroup label="Un producto en específico">`+PRODUCTS.map(p=>o("product:"+p.id,p.name)).join("")+`</optgroup>`;
+  h += `<optgroup label="Otro"><option value="url:"${sel.startsWith("url:")?" selected":""}>Enlace personalizado (web, WhatsApp...)</option></optgroup>`;
+  return h;
+}
+function heroEditRender(){
+  const box = document.getElementById("heroEditor"); if(!box) return;
+  box.innerHTML = heroEdit.map((sl,i)=>{
+    const sel = heroLinkOf(sl);
+    return `<div class="he-card">
+      <div class="he-head">
+        ${sl.img? `<img class="he-thumb" src="${escapeHtml(sl.img)}" alt="">` : `<div class="he-thumb" style="display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);text-align:center">Sin foto</div>`}
+        <b>Diapositiva ${i+1}</b>
+        <span style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap">
+          <button type="button" class="admin-edit" onclick="heroEditMove(${i},-1)"${i===0?" disabled":""}>↑</button>
+          <button type="button" class="admin-edit" onclick="heroEditMove(${i},1)"${i===heroEdit.length-1?" disabled":""}>↓</button>
+          <button type="button" class="admin-del" onclick="heroEditDel(${i})">Eliminar</button>
+        </span>
+      </div>
+      <div class="he-grid">
+        <div><label>Etiqueta (ej. NUEVO · JANDÉ SHOP)</label><input type="text" value="${escapeHtml(sl.eyebrow)}" maxlength="40" oninput="heroEditSet(${i},'eyebrow',this.value)"></div>
+        <div><label>Título</label><input type="text" value="${escapeHtml(sl.title)}" maxlength="70" oninput="heroEditSet(${i},'title',this.value)"></div>
+        <div class="he-full"><label>Texto</label><textarea rows="2" maxlength="160" oninput="heroEditSet(${i},'text',this.value)">${escapeHtml(sl.text)}</textarea></div>
+        <div><label>Texto del botón</label><input type="text" value="${escapeHtml(sl.cta)}" maxlength="30" oninput="heroEditSet(${i},'cta',this.value)"></div>
+        <div><label>El botón lleva a (déjalo vacío arriba para ocultar el botón)</label><select onchange="heroEditDest(${i},this.value)">${heroDestOptions(sel)}</select>
+          ${sel.startsWith("url:")? `<input type="text" style="margin-top:6px" placeholder="https://wa.me/51950090088 o https://..." value="${escapeHtml(sel.slice(4))}" oninput="heroEditSet(${i},'link','url:'+this.value.trim())">`:""}</div>
+        <div><label>Ícono (se muestra si no hay foto)</label><select onchange="heroEditSet(${i},'icon',this.value)">${Object.keys(ICONS).map(k=>`<option value="${k}"${k===(sl.icon||"kit")?" selected":""}>${k}</option>`).join("")}</select></div>
+        <div class="he-full"><label>Imagen (se recorta a 600 × 600 px)</label>
+          <input type="file" accept="image/*" onchange="heroEditPick(${i},this)">
+          ${sl.img? `<button type="button" class="admin-del" onclick="heroEditSet(${i},'img','');heroEditRender()">Quitar foto</button>`:""}
+          <span class="admin-msg" id="heroImgMsg${i}"></span>
+        </div>
+      </div>
+    </div>`;
+  }).join("") || `<div class="admin-empty">No hay diapositivas. Agrega una.</div>`;
+}
+function heroEditSet(i,k,v){ if(heroEdit[i]){ heroEdit[i][k]=v; heroEditDirty=true; } }
+function heroEditDest(i,v){ heroEdit[i].link=v; heroEditDirty=true; heroEditRender(); }
+function heroEditAdd(){
+  if(heroEdit.length>=HERO_MAX){ alert("Máximo "+HERO_MAX+" diapositivas."); return; }
+  heroEdit.push({eyebrow:"NUEVO · JANDÉ SHOP", title:"Nuevo título", text:"Describe tu promoción aquí.", cta:"Ver más", link:"page:shop", icon:"kit", img:""});
+  heroEditDirty=true; heroEditRender();
+}
+function heroEditDel(i){ if(!confirm("¿Eliminar la diapositiva "+(i+1)+"?")) return; heroEdit.splice(i,1); heroEditDirty=true; heroEditRender(); }
+function heroEditMove(i,d){ const j=i+d; if(j<0||j>=heroEdit.length) return; [heroEdit[i],heroEdit[j]]=[heroEdit[j],heroEdit[i]]; heroEditDirty=true; heroEditRender(); }
+function heroCropSquare(file,size){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onerror=()=>reject(new Error("No se pudo leer el archivo."));
+    r.onload=()=>{
+      const im=new Image();
+      im.onerror=()=>reject(new Error("La imagen no es válida."));
+      im.onload=()=>{
+        const m=Math.min(im.width,im.height), c=document.createElement("canvas");
+        c.width=c.height=size;
+        c.getContext("2d").drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,size,size);
+        resolve(c.toDataURL("image/jpeg",0.85));
+      };
+      im.src=r.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+function heroEditPick(i,input){
+  const file=input.files[0]; if(!file) return;
+  const msg=document.getElementById("heroImgMsg"+i);
+  msg.style.color="var(--gold-deep)"; msg.textContent="Subiendo...";
+  heroCropSquare(file,600).then(uploadProductImage).then(url=>{
+    heroEdit[i].img=url; heroEditDirty=true; heroEditRender();
+  }).catch(err=>{ msg.style.color="#c0392b"; msg.textContent="Error: "+err.message; });
+}
+function heroEditSave(){
+  const msg=document.getElementById("heroEditMsg");
+  const slides=heroEdit.map(sl=>({
+    eyebrow:(sl.eyebrow||"").trim(), title:(sl.title||"").trim(), text:(sl.text||"").trim(), cta:(sl.cta||"").trim(),
+    link:heroLinkOf(sl), icon:sl.icon||"kit", img:sl.img||""
+  }));
+  if(!slides.length || slides.some(x=>!x.title)){ msg.style.color="#c0392b"; msg.textContent="Cada diapositiva necesita un título."; return; }
+  msg.style.color="var(--gold-deep)"; msg.textContent="Guardando...";
+  db.collection("settings").doc("hero").set({slides, updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{
+    heroEditDirty=false; msg.style.color="#2e8b57"; msg.textContent="✓ Banner guardado. Ya se ve en la tienda.";
+  }).catch(err=>{
+    msg.style.color="#c0392b";
+    msg.textContent="Error: "+err.message+" (falta la regla de Firestore para la colección settings).";
+  });
+}
+function heroEditRestore(){
+  if(!confirm("¿Volver al banner original? Se perderán tus cambios guardados.")) return;
+  const msg=document.getElementById("heroEditMsg");
+  db.collection("settings").doc("hero").delete().then(()=>{
+    heroEditDirty=false; msg.style.color="#2e8b57"; msg.textContent="✓ Banner original restaurado.";
+  }).catch(err=>{ msg.style.color="#c0392b"; msg.textContent="Error: "+err.message; });
+}
 
 function renderHomePreview(){
   document.getElementById("homeGrid").innerHTML = PRODUCTS.slice(0,6).map(productCardHTML).join("");
@@ -2103,6 +2250,7 @@ auth.onAuthStateChanged(user=>{
     renderAdminProductList();
     renderAdminCouponList();
     renderAdminOrders();
+    if(!heroEditDirty) heroEditReset();
   } else {
     loginBox.style.display = "block";
     dash.style.display = "none";
