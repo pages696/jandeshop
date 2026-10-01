@@ -1979,10 +1979,10 @@ document.querySelector(".hero-strip .back").addEventListener("click", goHome);
 // Para cambiar la imagen de cada diapositiva, edita el campo img (recomendado: 600 x 600 px, cuadrada, JPG/WebP/PNG, menos de 150 KB).
 // Si la imagen no existe o falla, se muestra el ícono automáticamente.
 let HERO_SLIDES = [
-  {eyebrow:"BELLEZA INTEGRAL", title:"Todo tu ritual de belleza en un solo lugar", text:"Piel, cabello, manos, pies y mirada: descubre nuestro catálogo completo de belleza.", cta:"Ver categorías", sub:"all", icon:"kit", img:"images/hero-1.jpg"},
-  {eyebrow:"NUEVO", title:"Kit Iniciación Lash Lift", text:"Todo lo que necesitas para tu primer lifting de pestañas, en un solo kit profesional.", cta:"Ver kit", sub:"kit-lifting", icon:"kit", img:"images/producto-5-kit-lashlift.jpg"},
-  {eyebrow:"CUIDADO DIARIO", title:"Fortalece tu Mirada", text:"Sérum fortalecedor pensado para pestañas más sanas, con uso diario y resultados visibles.", cta:"Ver primer de pestañas", sub:"primer-pestanas", icon:"serum", img:"images/producto-3-serum.jpg"},
-  {eyebrow:"TENDENCIA", title:"Volumen Ruso al Instante", text:"Pestañas postizas de alto volumen, listas para lashistas y para uso personal.", cta:"Ver pestañas postizas", sub:"pestanas-postiza", icon:"postizas", img:"images/producto-1-pestanas-postizas.jpg"}
+  {eyebrow:"BELLEZA INTEGRAL", title:"Todo tu ritual de belleza en un solo lugar", text:"Piel, cabello, manos, pies y mirada: descubre nuestro catálogo completo de belleza.", cta:"Ver categorías", sub:"all", icon:"kit", img:""},
+  {eyebrow:"NUEVO", title:"Kit Iniciación Lash Lift", text:"Todo lo que necesitas para tu primer lifting de pestañas, en un solo kit profesional.", cta:"Ver kit", sub:"kit-lifting", icon:"kit", img:""},
+  {eyebrow:"CUIDADO DIARIO", title:"Fortalece tu Mirada", text:"Sérum fortalecedor pensado para pestañas más sanas, con uso diario y resultados visibles.", cta:"Ver primer de pestañas", sub:"primer-pestanas", icon:"serum", img:""},
+  {eyebrow:"TENDENCIA", title:"Volumen Ruso al Instante", text:"Pestañas postizas de alto volumen, listas para lashistas y para uso personal.", cta:"Ver pestañas postizas", sub:"pestanas-postiza", icon:"postizas", img:""}
 ];
 HERO_SLIDES.forEach(x=>{ x.eyebrow += " · JANDÉ SHOP"; });
 const HERO_DEFAULTS = JSON.parse(JSON.stringify(HERO_SLIDES));
