@@ -918,7 +918,7 @@
 
       <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
         <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 6px">Descuento por cantidad</h3>
-        <p class="admin-hint" style="margin-bottom:14px">Puedes agregar varios descuentos. En cada uno marca las subcategorías donde se aplica (los productos de todas las marcadas se cuentan juntos) y define los niveles: "al llevar N o más productos, descuento de X", donde X puede ser un porcentaje (%) o un monto fijo en soles (S/, se resta una sola vez). Se aplica el nivel más alto que alcance el cliente. Si un producto entra en más de un descuento, los descuentos se suman. Recuerda pulsar <b>Guardar descuentos</b> después de cada cambio.</p>
+        <p class="admin-hint" style="margin-bottom:14px">Puedes agregar varios descuentos. En cada uno marca las subcategorías donde se aplica (los productos de todas las marcadas se cuentan juntos) y define los niveles: "por cada N productos, descuento de X", donde X puede ser un porcentaje (%) o un monto fijo en soles (S/ por cada grupo). Se forman grupos con el nivel más alto y lo que sobra se descuenta con el siguiente nivel que alcance. Ejemplo con niveles de 2, 3 y 4: 10 productos = 2 grupos de 4 + 1 grupo de 2; 5 productos = 1 grupo de 4 (sobra 1 sin descuento). Si un producto entra en más de un descuento, los descuentos se suman. Recuerda pulsar <b>Guardar descuentos</b> después de cada cambio.</p>
         <div id="discEditor"><div class="admin-empty">Cargando descuentos…</div></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
           <button type="button" class="pd-back" id="discAddBtn" onclick="discEditAdd()" style="display:none">+ Agregar descuento</button>
@@ -1887,7 +1887,7 @@ function renderCart(){
   const discount = (appliedCoupon && cart.length) ? couponDiscount(appliedCoupon, subtotal - bulk.total) : 0;
   document.getElementById("cartSubtotal").textContent = "S/"+subtotal.toFixed(2);
   document.getElementById("cartBulkRows").innerHTML = bulk.items.map(b=>
-    `<div class="drawer-total" style="font-size:13px;font-weight:500;color:#2e8b57;align-items:flex-start;gap:12px"><span style="flex:1;min-width:0;overflow-wrap:anywhere">${escapeHtml(b.label)}<small style="display:block;font-weight:400;font-size:12px;opacity:.85">${b.units} u. · ${escapeHtml(b.tag)} de descuento</small></span><span style="white-space:nowrap;flex-shrink:0">-S/${b.amount.toFixed(2)}</span></div>`).join("");
+    `<div class="drawer-total" style="font-size:13px;font-weight:500;color:#2e8b57;align-items:flex-start;gap:12px"><span style="flex:1;min-width:0;overflow-wrap:anywhere">${escapeHtml(b.label)}<small style="display:block;font-weight:400;font-size:12px;opacity:.85">${escapeHtml(b.detail)}</small></span><span style="white-space:nowrap;flex-shrink:0">-S/${b.amount.toFixed(2)}</span></div>`).join("");
   const discRow = document.getElementById("cartDiscountRow");
   if(discount > 0){
     discRow.style.display = "flex";
@@ -1998,21 +1998,34 @@ function bulkDiscount(items){
   if(!DISC || !DISC.length) return {items:[], total:0};
   // Los descuentos se suman: cada uno revisa por su cuenta qué productos del carrito le corresponden
   // (un mismo producto puede entrar en varios descuentos y cada uno aplica el suyo).
-  const acc = DISC.map(()=>({units:0, sum:0}));
+  // Guardamos el precio de cada unidad, en el orden del carrito, para formar los grupos.
+  const acc = DISC.map(()=>({prices:[]}));
   items.forEach(c=>{
     const k = cartLineCat(c)+"|"+cartLineSub(c), tipo = cartLineTipo(c);
     DISC.forEach((d,i)=>{
-      if(d.subs.includes(k) || (tipo && d.subs.includes(k+"|"+tipo))){ acc[i].units += c.qty; acc[i].sum += c.price*c.qty; }
+      if(d.subs.includes(k) || (tipo && d.subs.includes(k+"|"+tipo))){ for(let n=0;n<c.qty;n++) acc[i].prices.push(c.price); }
     });
   });
   const out = []; let total = 0;
   DISC.forEach((d,i)=>{
-    const {units, sum} = acc[i];
-    const hit = d.tiers.filter(t=>units >= t.qty).sort((x,y)=>y.qty-x.qty)[0];
-    if(!hit) return;
-    const amount = hit.type === "fixed" ? Math.min(hit.value, sum) : Math.round(sum*hit.value)/100;
+    const prices = acc[i].prices, units = prices.length;
+    // Se forman grupos con el nivel más alto; lo que sobra se descuenta con el siguiente nivel que alcance, y así hasta agotar.
+    const tiers = d.tiers.slice().sort((x,y)=>y.qty-x.qty);
+    let pos = 0, amount = 0; const parts = [];
+    tiers.forEach(t=>{
+      const n = Math.floor((units-pos)/t.qty);
+      if(n < 1) return;
+      for(let g=0; g<n; g++){
+        const sum = prices.slice(pos, pos+t.qty).reduce((a,x)=>a+x,0);
+        amount += t.type === "fixed" ? Math.min(t.value, sum) : Math.round(sum*t.value)/100;
+        pos += t.qty;
+      }
+      parts.push(n+" "+(n===1?"grupo":"grupos")+" de "+t.qty+" ("+(t.type === "fixed" ? "S/"+t.value.toFixed(2)+" por grupo" : t.value+"%")+")");
+    });
+    if(!parts.length) return;
+    amount = Math.round(amount*100)/100;
     total += amount;
-    out.push({label:fixEnie(d.name) || discAutoName(d), units, amount, tag: hit.type === "fixed" ? "S/"+hit.value.toFixed(2) : hit.value+"%"});
+    out.push({label:fixEnie(d.name) || discAutoName(d), units, amount, detail: units+" u.: "+parts.join(" + ")});
   });
   return {items:out, total:Math.min(total, items.reduce((a,c)=>a+c.price*c.qty,0))};
 }
@@ -2074,7 +2087,7 @@ function discCardHtml(d,i){
     ${subsHtml}
     <div style="font-size:12px;color:var(--muted);margin:14px 0 6px">Niveles de descuento</div>
     ${d.tiers.map((t,j)=>`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:13px">
-      Al llevar <input type="number" min="1" max="99" step="1" value="${t.qty}" oninput="discEditTier(${i},${j},'qty',this.value)" style="width:70px;${fld}"> o más productos
+      Por cada <input type="number" min="1" max="99" step="1" value="${t.qty}" oninput="discEditTier(${i},${j},'qty',this.value)" style="width:70px;${fld}"> productos
       → descuento de <input type="number" min="0.01" ${t.type==="fixed"?"":'max="90" '}step="any" value="${t.value}" oninput="discEditTier(${i},${j},'value',this.value)" style="width:90px;${fld}">
       <select onchange="discEditTierType(${i},${j},this.value)" style="${fld}"><option value="percent"${t.type!=="fixed"?" selected":""}>% (porcentaje)</option><option value="fixed"${t.type==="fixed"?" selected":""}>S/ (monto fijo)</option></select>
       <button type="button" class="admin-del" onclick="discEditTierDel(${i},${j})" title="Quitar nivel">✕</button></div>`).join("")}
@@ -2230,7 +2243,7 @@ function checkout(){
   if(window.track) track("begin_checkout",{id:"cart",name:"Carrito",price:0,qty:cart.length,value:total});
   const lines = cart.map(c=>`• ${c.name} x${c.qty} — S/${(c.price*c.qty).toFixed(2)}`).join("%0A");
   let msg = `Hola Jandé Shop! Quiero hacer este pedido:%0A${lines}%0A%0ASubtotal: S/${subtotal.toFixed(2)}`;
-  bulk.items.forEach(b=>{ msg += `%0A${encodeURIComponent(b.label+" ("+b.units+" u., "+b.tag+" de descuento)")}: -S/${b.amount.toFixed(2)}`; });
+  bulk.items.forEach(b=>{ msg += `%0A${encodeURIComponent(b.label+" ("+b.detail+")")}: -S/${b.amount.toFixed(2)}`; });
   if(discount > 0) msg += `%0ADescuento (${appliedCoupon.code} ${encodeURIComponent(couponLabel(appliedCoupon))}): -S/${discount.toFixed(2)}`;
   msg += deliveryMode === "local"
     ? `%0AEntrega: Compra local (sin costo de envío)%0ATotal: S/${total.toFixed(2)}`
