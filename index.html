@@ -1916,7 +1916,7 @@ function renderCart(){
    Se aplica el nivel más alto alcanzado. */
 let DISC = [];   // lista de descuentos por cantidad
 let discEdit = [], discEditDirty = false;
-let discLoaded = false, discOpenCats = {};
+let discLoaded = false, discOpenCats = {}, discCardOpen = {};   // discCardOpen[i]: tarjeta desplegada
 /* Tipos internos dentro de una subcategoría: solo sirven para elegir a qué productos
    se aplica el descuento. No son subcategorías de la tienda (no salen en menús ni filtros). */
 const DISC_TYPES = {
@@ -2038,12 +2038,19 @@ function discCardHtml(d,i){
       }).join("")}</div>` : ""}
     </div>`;
   }).join("");
+  const isOpen = !!discCardOpen[i];
+  const nSub = d.subs.length, nTier = d.tiers.length;
+  const summary = `${nSub} ${nSub===1?"subcategoría":"subcategorías"} · ${nTier} ${nTier===1?"nivel":"niveles"}`;
   return `<div style="border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff;margin-bottom:16px">
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>Descuento ${i+1}</b>
-        <input type="text" maxlength="60" placeholder="Nombre (opcional, se ve en el carrito)" value="${escapeHtml(d.name||"")}" oninput="discEditName(${i},this.value)" style="width:260px;max-width:100%;${fld}"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:${isOpen?12:0}px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1;min-width:0">
+        <button type="button" class="admin-edit" onclick="discToggleCard(${i})" aria-expanded="${isOpen}" title="${isOpen?"Contraer":"Desplegar"}" style="padding:2px 8px;font-size:15px;line-height:1">${isOpen?"▾":"▸"}</button>
+        <b onclick="discToggleCard(${i})" style="cursor:pointer">Descuento ${i+1}${d.name?" · "+escapeHtml(d.name):""}</b>
+        ${isOpen ? `<input type="text" maxlength="60" placeholder="Nombre (opcional, se ve en el carrito)" value="${escapeHtml(d.name||"")}" oninput="discEditName(${i},this.value)" style="width:260px;max-width:100%;${fld}">` : `<span style="font-size:12px;color:var(--muted)">${summary}</span>`}
+      </div>
       <button type="button" class="admin-del" onclick="discEditDel(${i})">Quitar descuento</button>
     </div>
+    <div style="display:${isOpen?"block":"none"}">
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Subcategorías donde se aplica (los productos marcados se cuentan juntos) · <b style="color:${total?"var(--gold-deep)":"#c0392b"}">${total} ${total===1?"marcada":"marcadas"} en total</b></div>
     ${subsHtml}
     <div style="font-size:12px;color:var(--muted);margin:14px 0 6px">Niveles de descuento</div>
@@ -2053,6 +2060,7 @@ function discCardHtml(d,i){
       <select onchange="discEditTierType(${i},${j},this.value)" style="${fld}"><option value="percent"${t.type!=="fixed"?" selected":""}>% (porcentaje)</option><option value="fixed"${t.type==="fixed"?" selected":""}>S/ (monto fijo)</option></select>
       <button type="button" class="admin-del" onclick="discEditTierDel(${i},${j})" title="Quitar nivel">✕</button></div>`).join("")}
     <button type="button" class="admin-edit" onclick="discEditTierAdd(${i})" style="padding-left:0">+ Agregar nivel</button>
+    </div>
   </div>`;
 }
 function discEditRender(){
@@ -2062,23 +2070,26 @@ function discEditRender(){
   if(!discEdit.length){ box.innerHTML = `<div class="admin-empty">No hay ningún descuento activo. Pulsa "+ Agregar descuento".</div>`; return; }
   box.innerHTML = discEdit.map(discCardHtml).join("");
 }
+function discToggleCard(i){ discCardOpen[i] = !discCardOpen[i]; discEditRender(); }
 function discToggleCat(i,cat){
   const ok = i+"|"+cat;
   const cur = discOpenCats[ok] !== undefined ? discOpenCats[ok] : discEdit[i].subs.some(x=>x.indexOf(cat+"|") === 0);
   discOpenCats[ok] = !cur; discEditRender();
 }
 function discEditDiscard(){
-  discOpenCats = {};
+  discOpenCats = {}; discCardOpen = {};
   discEditReset();
   const msg = document.getElementById("discEditMsg"); msg.style.color = "var(--muted)"; msg.textContent = "Cambios descartados: se muestra lo que está guardado.";
 }
 function discEditAdd(){
   discEdit.push({name:"", subs:[], tiers:[{qty:2,type:"percent",value:5},{qty:3,type:"percent",value:10}]});
+  discCardOpen[discEdit.length-1] = true;   // la nueva se muestra desplegada
   discEditDirty = true; discEditRender();
 }
 function discEditDel(i){
   if(!confirm("¿Quitar el descuento " + (i+1) + "? Se aplicará al pulsar \"Guardar descuentos\".")) return;
   discEdit.splice(i,1); discOpenCats = {};
+  const co = {}; Object.keys(discCardOpen).forEach(k=>{ k=+k; if(k<i) co[k]=discCardOpen[k]; else if(k>i) co[k-1]=discCardOpen[k]; }); discCardOpen = co;
   discEditDirty = true; discEditRender();
 }
 function discEditName(i,v){ discEdit[i].name = v; discEditDirty = true; }
@@ -2103,16 +2114,16 @@ function discEditTierAdd(i){
 function discEditTierDel(i,j){ discEdit[i].tiers.splice(j,1); discEditDirty = true; discEditRender(); }
 function discEditSave(){
   const msg = document.getElementById("discEditMsg");
-  const bad = t => { msg.style.color="#c0392b"; msg.textContent=t; };
+  const bad = (t,i) => { if(i!=null){ discCardOpen[i] = true; discEditRender(); } msg.style.color="#c0392b"; msg.textContent=t; };
   for(let i=0;i<discEdit.length;i++){
     const d = discEdit[i], pre = "Descuento "+(i+1)+": ";
-    if(!d.subs.length) return bad(pre+"marca al menos una subcategoría.");
-    if(!d.tiers.length) return bad(pre+"agrega al menos un nivel de descuento.");
+    if(!d.subs.length) return bad(pre+"marca al menos una subcategoría.",i);
+    if(!d.tiers.length) return bad(pre+"agrega al menos un nivel de descuento.",i);
     const seen = {};
     for(const t of d.tiers){
       const okVal = t.type === "fixed" ? Number(t.value) > 0 : (Number(t.value) > 0 && Number(t.value) <= 90);
-      if(!(parseInt(t.qty)>=1) || !okVal) return bad(pre+"cada nivel necesita cantidad desde 1 y un descuento mayor a 0 (en %, máximo 90).");
-      if(seen[parseInt(t.qty)]) return bad(pre+"hay dos niveles con la misma cantidad.");
+      if(!(parseInt(t.qty)>=1) || !okVal) return bad(pre+"cada nivel necesita cantidad desde 1 y un descuento mayor a 0 (en %, máximo 90).",i);
+      if(seen[parseInt(t.qty)]) return bad(pre+"hay dos niveles con la misma cantidad.",i);
       seen[parseInt(t.qty)] = true;
     }
   }
