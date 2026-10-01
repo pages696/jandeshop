@@ -450,6 +450,7 @@
   .promo-tiles{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1180px;margin:36px auto;padding:0 20px}
   @media (max-width:640px){ .promo-tiles{grid-template-columns:1fr} }
   .promo-tile{border:0;text-align:left;border-radius:10px;padding:32px;min-height:160px;display:flex;flex-direction:column;justify-content:center;gap:8px;color:#fff;cursor:pointer}
+  .promo-tile.has-img span,.promo-tile.has-img h3,.promo-tile.has-img em{text-shadow:0 1px 6px rgba(0,0,0,.55)}
   .promo-tile span{font-size:11px;letter-spacing:2px;opacity:.85}
   .promo-tile h3{font-size:21px;color:#fff}
   .promo-tile em{font-style:normal;font-size:12.5px;text-decoration:underline;margin-top:4px}
@@ -2183,8 +2184,9 @@ function renderTiles(){
   const box = document.getElementById("promoTiles"); if(!box) return;
   box.innerHTML = TILES.map((t,i)=>{
     const grad = `linear-gradient(135deg,${escapeHtml(t.c1||"#c2116a")},${escapeHtml(t.c2||"#7c3a5c")})`;
-    const bg = t.img ? `linear-gradient(rgba(0,0,0,.38),rgba(0,0,0,.38)),url('${escapeHtml(t.img)}') center/cover` : grad;
-    return `<button class="promo-tile" style="background:${bg}" onclick="tileClick(${i})">
+    const sh = (typeof t.shade==="number" ? t.shade : 38)/100;
+    const bg = t.img ? `linear-gradient(rgba(0,0,0,${sh}),rgba(0,0,0,${sh})),url('${escapeHtml(t.img)}') center/cover` : grad;
+    return `<button class="promo-tile${t.img?" has-img":""}" style="background:${bg}" onclick="tileClick(${i})">
       ${t.eyebrow? `<span>${escapeHtml(t.eyebrow)}</span>`:""}
       <h3>${escapeHtml(t.title)}</h3>
       ${t.cta? `<em>${escapeHtml(t.cta)} ›</em>`:""}
@@ -2236,11 +2238,13 @@ function tileEditRender(){
           ${sel.startsWith("url:")? `<input type="text" style="margin-top:6px" placeholder="https://wa.me/51950090088 o https://..." value="${escapeHtml(sel.slice(4))}" oninput="tileEditSet(${i},'link','url:'+this.value.trim())">`:""}</div>
         <div><label>Color 1</label><input type="color" value="${escapeHtml(t.c1||"#c2116a")}" oninput="tileEditSet(${i},'c1',this.value)" onchange="tileEditRender()"></div>
         <div><label>Color 2</label><input type="color" value="${escapeHtml(t.c2||"#7c3a5c")}" oninput="tileEditSet(${i},'c2',this.value)" onchange="tileEditRender()"></div>
-        <div class="he-full"><label>Foto de fondo (opcional, se recorta a 1120 × 320 px; si hay foto, los colores no se usan)</label>
+        <div class="he-full"><label>Foto de fondo (opcional, se recorta a 1120 × 320 px; las letras quedan encima de la foto y los colores no se usan)</label>
           <input type="file" accept="image/*" onchange="tileEditPick(${i},this)">
           ${t.img? `<button type="button" class="admin-del" onclick="tileEditSet(${i},'img','');tileEditRender()">Quitar foto</button>`:""}
           <span class="admin-msg" id="tileImgMsg${i}"></span>
         </div>
+        ${t.img? `<div class="he-full"><label>Oscurecer la foto para que se lean las letras: <b id="tileShadeVal${i}">${typeof t.shade==="number"?t.shade:38}</b>%</label>
+          <input type="range" min="0" max="80" step="2" value="${typeof t.shade==="number"?t.shade:38}" oninput="tileEditSet(${i},'shade',+this.value);document.getElementById('tileShadeVal${i}').textContent=this.value"></div>`:""}
       </div>
     </div>`;
   }).join("") || `<div class="admin-empty">No hay tarjetas. Agrega una.</div>`;
@@ -2266,7 +2270,8 @@ function tileEditSave(){
   const msg=document.getElementById("tileEditMsg");
   const tiles=tileEdit.map(t=>({
     eyebrow:(t.eyebrow||"").trim(), title:(t.title||"").trim(), cta:(t.cta||"").trim(),
-    link:t.link||"page:shop", c1:t.c1||"#c2116a", c2:t.c2||"#7c3a5c", img:t.img||""
+    link:t.link||"page:shop", c1:t.c1||"#c2116a", c2:t.c2||"#7c3a5c", img:t.img||"",
+    shade:(typeof t.shade==="number" ? t.shade : 38)
   }));
   if(!tiles.length || tiles.some(x=>!x.title)){ msg.style.color="#c0392b"; msg.textContent="Cada tarjeta necesita un título."; return; }
   msg.style.color="var(--gold-deep)"; msg.textContent="Guardando...";
