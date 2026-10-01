@@ -427,6 +427,11 @@
     .hero-slide h2{font-size:26px}
     .hero-slide.has-img h2{font-size:24px}
   }
+  .hero-slider.hero-loading .hero-nav,.hero-slider.hero-loading .hero-dots{display:none}
+  .hero-content{transition:opacity .4s ease}
+  .hero-slide.has-img .hero-bg,.hero-slide.has-img .hero-shade{opacity:0;transition:opacity .5s ease}
+  .hero-slide.has-img.ready .hero-bg,.hero-slide.has-img.ready .hero-shade{opacity:1}
+  .hero-slide.has-img:not(.ready) .hero-content{opacity:0}
   .hero-nav,.hero-dots{z-index:5}
   .hero-nav{position:absolute;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.85);border:1px solid var(--line);cursor:pointer;font-size:16px;color:var(--gold-deep)}
   .hero-nav.prev{left:16px}.hero-nav.next{right:16px}
@@ -552,7 +557,7 @@
 </header>
 
 <div id="homeView">
-  <div class="hero-slider">
+  <div class="hero-slider hero-loading">
     <div id="heroSlides"></div>
     <button class="hero-nav prev" onclick="heroGo(-1)" aria-label="Anterior">‹</button>
     <button class="hero-nav next" onclick="heroGo(1)" aria-label="Siguiente">›</button>
@@ -2002,11 +2007,14 @@ let HERO_SLIDES = [
 HERO_SLIDES.forEach(x=>{ x.eyebrow += " · JANDÉ SHOP"; });
 const HERO_DEFAULTS = JSON.parse(JSON.stringify(HERO_SLIDES));
 let heroIndex = 0, heroTimer;
+let heroKey="";
 function renderHero(){
+  heroKey = JSON.stringify(HERO_SLIDES);
+  document.querySelector(".hero-slider").classList.remove("hero-loading");
   // Se crea el banner UNA vez; al cambiar de diapositiva solo se alternan clases (sin recargar imágenes)
   document.getElementById("heroSlides").innerHTML = HERO_SLIDES.map((s,i)=>`
     <div class="hero-slide ${s.img?"has-img":""}">
-      ${s.img? `<img class="hero-bg" src="${escapeHtml(s.img)}" alt="" decoding="async" onerror="this.parentNode.classList.remove('has-img');this.remove()"><div class="hero-shade"></div>`:""}
+      ${s.img? `<img class="hero-bg" src="${escapeHtml(s.img)}" alt="" decoding="async" onload="this.parentNode.classList.add('ready')" onerror="this.parentNode.classList.remove('has-img');this.remove()"><div class="hero-shade"></div>`:""}
       <div class="hero-content">
         <div>
           <div class="hero-eyebrow">${escapeHtml(s.eyebrow)}</div>
@@ -2043,7 +2051,8 @@ db.collection("settings").doc("hero").onSnapshot(doc=>{
   const d = doc.exists ? doc.data() : null;
   HERO_SLIDES = (d && Array.isArray(d.slides) && d.slides.length) ? d.slides : JSON.parse(JSON.stringify(HERO_DEFAULTS));
   if(heroIndex >= HERO_SLIDES.length) heroIndex = 0;
-  renderHero();
+  try{ localStorage.setItem("jande_hero_cache", JSON.stringify(HERO_SLIDES)); }catch(e){}
+  if(JSON.stringify(HERO_SLIDES) !== heroKey) renderHero();   // si es igual al que ya se ve (caché), no se toca
   if(!heroEditDirty) heroEditReset();
 }, err=>console.warn("No se pudo leer el banner (settings/hero). Revisa las reglas de Firestore:", err.message));
 
@@ -2159,7 +2168,11 @@ function renderHomePreview(){
   document.getElementById("homeGrid").innerHTML = PRODUCTS.slice(0,6).map(productCardHTML).join("");
 }
 
-renderHero();
+try{
+  const c = JSON.parse(localStorage.getItem("jande_hero_cache")||"null");
+  if(Array.isArray(c) && c.length){ HERO_SLIDES = c; renderHero(); }   // segunda visita en adelante: aparece al instante
+}catch(e){}
+// sin caché (primera visita) el banner queda vacío y sin flechas hasta que Firestore responda
 resetHeroTimer();
 renderHomePreview();
 showView("home");
