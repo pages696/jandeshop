@@ -1870,7 +1870,7 @@ function renderCart(){
       <div class="cart-line">
         <div class="ci-thumb"><img src="${c.img}" alt="" onerror="this.style.display='none'"></div>
         <div class="ci-body">
-          <h5>${c.name}</h5>
+          <h5>${fixEnie(c.name)}</h5>
           <div class="qty">
             <button onclick="changeQty('${c.id}',-1)" aria-label="Quitar uno">−</button>
             <span>${c.qty}</span>
@@ -1923,6 +1923,14 @@ const DISC_TYPES = {
   "pestanas|extensiones-pestana": {libros:"Libros de pestañas", hojas:"Hojas de pestañas", pares:"Pares de pestañas"}
 };
 
+/* Corrige palabras escritas sin ñ (el teclado del admin no la tiene): pestanas -> pestañas, diseno -> diseño */
+function fixEnie(t){
+  return String(t == null ? "" : t).replace(/\b(pestana|diseno)(s?)\b/gi,(m,w,pl)=>{
+    const base = w.toLowerCase() === "pestana" ? "pestaña" : "diseño", out = base + pl.toLowerCase();
+    if(m === m.toUpperCase()) return out.toUpperCase();
+    return m[0] === m[0].toUpperCase() ? out[0].toUpperCase() + out.slice(1) : out;
+  });
+}
 function discSubValid(key){
   const k = String(key).split("|");
   if(!(CATEGORIES[k[0]] && CATEGORIES[k[0]].subs[k[1]])) return false;
@@ -1942,7 +1950,7 @@ function discNormOne(x){
   const subs = (Array.isArray(x.subs)?x.subs:[]).filter(discSubValid);
   const tiers = discCleanTiers(x.tiers);
   if(!(subs.length && tiers.length)) return null;
-  return {name:String(x.name||"").trim().slice(0,60), subs, tiers};
+  return {name:fixEnie(String(x.name||"").trim()).slice(0,60), subs, tiers};
 }
 function discNorm(d){
   if(!d) return [];
@@ -1981,8 +1989,8 @@ function discAutoName(d){
   const title = t => String(t).replace(/(^|\s)(\p{L})/gu,(m,a,b)=>a+b.toUpperCase()).replace(/\sDe\s/g," de ");
   if(d.subs.length === 1){
     const k = d.subs[0].split("|");
-    if(k.length === 3 && DISC_TYPES[k[0]+"|"+k[1]] && DISC_TYPES[k[0]+"|"+k[1]][k[2]]) return title(DISC_TYPES[k[0]+"|"+k[1]][k[2]]);
-    if(CATEGORIES[k[0]] && CATEGORIES[k[0]].subs[k[1]]) return title(CATEGORIES[k[0]].subs[k[1]]);
+    if(k.length === 3 && DISC_TYPES[k[0]+"|"+k[1]] && DISC_TYPES[k[0]+"|"+k[1]][k[2]]) return "Descuento de " + title(DISC_TYPES[k[0]+"|"+k[1]][k[2]]);
+    if(CATEGORIES[k[0]] && CATEGORIES[k[0]].subs[k[1]]) return "Descuento de " + title(CATEGORIES[k[0]].subs[k[1]]);
   }
   return "Descuento por cantidad";
 }
@@ -2004,7 +2012,7 @@ function bulkDiscount(items){
     if(!hit) return;
     const amount = hit.type === "fixed" ? Math.min(hit.value, sum) : Math.round(sum*hit.value)/100;
     total += amount;
-    out.push({label:d.name || discAutoName(d), units, amount, tag: hit.type === "fixed" ? "S/"+hit.value.toFixed(2) : hit.value+"%"});
+    out.push({label:fixEnie(d.name) || discAutoName(d), units, amount, tag: hit.type === "fixed" ? "S/"+hit.value.toFixed(2) : hit.value+"%"});
   });
   return {items:out, total:Math.min(total, items.reduce((a,c)=>a+c.price*c.qty,0))};
 }
@@ -2056,8 +2064,8 @@ function discCardHtml(d,i){
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:${isOpen?12:0}px">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1;min-width:0">
         <button type="button" class="admin-edit" onclick="discToggleCard(${i})" aria-expanded="${isOpen}" title="${isOpen?"Contraer":"Desplegar"}" style="padding:2px 8px;font-size:15px;line-height:1">${isOpen?"▾":"▸"}</button>
-        <b onclick="discToggleCard(${i})" style="cursor:pointer">Descuento ${i+1}${d.name?" · "+escapeHtml(d.name):""}</b>
-        ${isOpen ? `<input type="text" maxlength="60" placeholder="Nombre (opcional, se ve en el carrito)" value="${escapeHtml(d.name||"")}" oninput="discEditName(${i},this.value)" style="width:260px;max-width:100%;${fld}">` : `<span style="font-size:12px;color:var(--muted)">${summary}</span>`}
+        <b onclick="discToggleCard(${i})" style="cursor:pointer">Descuento ${i+1}${d.name?" · "+escapeHtml(fixEnie(d.name)):""}</b>
+        ${isOpen ? `<input type="text" maxlength="60" placeholder="Nombre (opcional, se ve en el carrito)" value="${escapeHtml(fixEnie(d.name||""))}" oninput="discEditName(${i},this.value)" onchange="this.value=fixEnie(this.value);discEditName(${i},this.value)" style="width:260px;max-width:100%;${fld}">` : `<span style="font-size:12px;color:var(--muted)">${summary}</span>`}
       </div>
       <button type="button" class="admin-del" onclick="discEditDel(${i})">Quitar descuento</button>
     </div>
@@ -2139,7 +2147,7 @@ function discEditSave(){
     }
   }
   const discounts = discEdit.map(d=>({
-    name: String(d.name||"").trim().slice(0,60),
+    name: fixEnie(String(d.name||"").trim()).slice(0,60),
     subs: d.subs.filter(discSubValid),
     tiers: d.tiers.map(t=>({qty:parseInt(t.qty), type:t.type === "fixed" ? "fixed" : "percent", value:Number(t.value)})).sort((x,y)=>x.qty-y.qty)
   }));
