@@ -400,29 +400,39 @@
   .reclamos-legal{font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:22px}
 
   /* home */
-  .hero-slider{position:relative;background:linear-gradient(120deg,#fdeaf3,#ffffff 65%);overflow:hidden}
-  .hero-slide{display:none}
-  .hero-slide.active{display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:24px;max-width:1180px;margin:0 auto;padding:56px 20px;min-height:300px}
-  @media (max-width:760px){ .hero-slide.active{grid-template-columns:1fr;text-align:center;padding:40px 20px} }
+  .hero-slider{position:relative;background:linear-gradient(120deg,#fdeaf3,#ffffff 65%);overflow:hidden;height:clamp(300px,25vw,480px)}
+  .hero-slide{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .6s ease,visibility .6s}
+  .hero-slide.active{opacity:1;visibility:visible;z-index:1}
+  .hero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block}
+  .hero-shade{position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.30),rgba(0,0,0,.45))}
+  .hero-content{position:relative;z-index:2;height:100%;max-width:1180px;margin:0 auto;padding:0 72px;display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:24px}
   .hero-eyebrow{color:var(--gold-deep);font-size:12px;font-weight:600;letter-spacing:2px;margin-bottom:10px}
   .hero-slide h2{font-size:36px;line-height:1.15;margin-bottom:14px}
   .hero-slide p{font-size:14px;color:var(--muted);max-width:380px;margin-bottom:22px}
-  @media (max-width:760px){ .hero-slide p{margin-left:auto;margin-right:auto} }
   .hero-cta{background:var(--gold-deep);color:#fff;border:0;padding:13px 26px;border-radius:24px;font-size:13px;font-weight:600;cursor:pointer}
   .hero-visual{display:flex;align-items:center;justify-content:center}
   .hero-visual .circle{position:relative;overflow:hidden;width:230px;height:230px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #ffffff, var(--blush) 60%, #f3d3e4 100%);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
   .hero-visual svg{width:46%;height:46%}
-  .hero-visual .circle img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;display:block}
-  .hero-slide.active.has-img{display:block;max-width:none;margin:0;padding:0;min-height:0;cursor:pointer}
-  .hero-bg{display:block;width:100%;height:auto;object-fit:cover}
-  .hero-slide.has-img>div{display:none}
-  @media (max-width:760px){ .hero-bg{min-height:150px} }
-  .hero-nav,.hero-dots{z-index:3}
+  /* diapositiva con imagen: foto de fondo + texto centrado encima */
+  .hero-slide.has-img .hero-content{grid-template-columns:1fr;justify-items:center;align-content:center;text-align:center}
+  .hero-slide.has-img .hero-visual{display:none}
+  .hero-slide.has-img .hero-eyebrow,.hero-slide.has-img h2,.hero-slide.has-img p{color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.45)}
+  .hero-slide.has-img h2{font-size:clamp(24px,3.2vw,44px)}
+  .hero-slide.has-img p{max-width:560px;margin-left:auto;margin-right:auto}
+  .hero-slide.has-img .hero-cta{background:#fff;color:var(--gold-deep)}
+  @media (max-width:760px){
+    .hero-content{grid-template-columns:1fr;text-align:center;padding:0 56px}
+    .hero-slide p{margin-left:auto;margin-right:auto}
+    .hero-slide:not(.has-img) .hero-visual{display:none}
+    .hero-slide h2{font-size:26px}
+    .hero-slide.has-img h2{font-size:24px}
+  }
+  .hero-nav,.hero-dots{z-index:5}
   .hero-nav{position:absolute;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.85);border:1px solid var(--line);cursor:pointer;font-size:16px;color:var(--gold-deep)}
   .hero-nav.prev{left:16px}.hero-nav.next{right:16px}
   .hero-dots{position:absolute;bottom:14px;left:0;right:0;display:flex;justify-content:center;gap:8px}
-  .hero-dots button{width:8px;height:8px;border-radius:50%;border:0;background:var(--line);cursor:pointer;padding:0}
-  .hero-dots button.active{background:var(--gold-deep)}
+  .hero-dots button{width:9px;height:9px;border-radius:50%;border:0;background:rgba(255,255,255,.65);box-shadow:0 0 0 1px rgba(0,0,0,.18);cursor:pointer;padding:0}
+  .hero-dots button.active{background:var(--gold-deep);box-shadow:0 0 0 2px #fff}
   .he-card{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:var(--panel)}
   .he-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
   .he-thumb{width:64px;height:64px;border-radius:50%;object-fit:cover;background:var(--blush);border:1px solid var(--line);flex-shrink:0}
@@ -909,7 +919,7 @@
 
       <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
         <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 6px">Banner del inicio (carrusel)</h3>
-        <p class="admin-hint" style="margin-bottom:14px">Edita los textos, el botón y la imagen de cada diapositiva. Al subir una foto se recorta y ajusta sola a 1920 × 360 px (formato ancho, el texto y el botón deben ir dentro de la imagen).</p>
+        <p class="admin-hint" style="margin-bottom:14px">Edita los textos, el botón y la imagen de cada diapositiva. Al subir una foto se recorta y ajusta sola a 1920 × 480 px (formato ancho, el texto y el botón se escriben encima; usa una foto sin letras).</p>
         <div id="heroEditor"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
           <button type="button" class="pd-back" onclick="heroEditAdd()">+ Agregar diapositiva</button>
@@ -1981,7 +1991,7 @@ document.querySelector(".brand").addEventListener("click", goHome);
 document.querySelector(".hero-strip .back").style.cursor = "pointer";
 document.querySelector(".hero-strip .back").addEventListener("click", goHome);
 
-// Para cambiar la imagen de cada diapositiva, edita el campo img (recomendado: banner ancho 1920 x 360 px, JPG/WebP, menos de 250 KB; el texto y el botón deben ir dentro de la imagen).
+// Para cambiar la imagen de cada diapositiva, edita el campo img (recomendado: banner ancho 1920 x 480 px, JPG/WebP, menos de 250 KB; el texto y el botón se escriben encima; usa una foto sin letras).
 // Si la imagen no existe o falla, se muestra el ícono automáticamente.
 let HERO_SLIDES = [
   {eyebrow:"BELLEZA INTEGRAL", title:"Todo tu ritual de belleza en un solo lugar", text:"Piel, cabello, manos, pies y mirada: descubre nuestro catálogo completo de belleza.", cta:"Ver categorías", sub:"all", icon:"kit", img:""},
@@ -1993,18 +2003,26 @@ HERO_SLIDES.forEach(x=>{ x.eyebrow += " · JANDÉ SHOP"; });
 const HERO_DEFAULTS = JSON.parse(JSON.stringify(HERO_SLIDES));
 let heroIndex = 0, heroTimer;
 function renderHero(){
+  // Se crea el banner UNA vez; al cambiar de diapositiva solo se alternan clases (sin recargar imágenes)
   document.getElementById("heroSlides").innerHTML = HERO_SLIDES.map((s,i)=>`
-    <div class="hero-slide ${i===heroIndex?"active":""} ${s.img?"has-img":""}" ${s.img?`onclick="heroClick(${i})"`:""}>
-      ${s.img? `<img class="hero-bg" src="${escapeHtml(s.img)}" alt="${escapeHtml(s.title)}" onerror="this.parentNode.classList.remove('has-img');this.style.display='none'">`:""}
-      <div>
-        <div class="hero-eyebrow">${escapeHtml(s.eyebrow)}</div>
-        <h2>${escapeHtml(s.title)}</h2>
-        <p>${escapeHtml(s.text)}</p>
-        ${s.cta? `<button class="hero-cta" onclick="heroClick(${i})">${escapeHtml(s.cta)}</button>`:""}
+    <div class="hero-slide ${s.img?"has-img":""}">
+      ${s.img? `<img class="hero-bg" src="${escapeHtml(s.img)}" alt="" decoding="async" onerror="this.parentNode.classList.remove('has-img');this.remove()"><div class="hero-shade"></div>`:""}
+      <div class="hero-content">
+        <div>
+          <div class="hero-eyebrow">${escapeHtml(s.eyebrow)}</div>
+          <h2>${escapeHtml(s.title)}</h2>
+          <p>${escapeHtml(s.text)}</p>
+          ${s.cta? `<button class="hero-cta" onclick="heroClick(${i})">${escapeHtml(s.cta)}</button>`:""}
+        </div>
+        <div class="hero-visual"><div class="circle">${ICONS[s.icon]||ICONS.kit}</div></div>
       </div>
-      <div class="hero-visual"><div class="circle">${s.img? `<img src="${escapeHtml(s.img)}" alt="${escapeHtml(s.title)}" onerror="this.style.display='none'">`:""}${ICONS[s.icon]||ICONS.kit}</div></div>
     </div>`).join("");
-  document.getElementById("heroDots").innerHTML = HERO_SLIDES.map((s,i)=>`<button class="${i===heroIndex?"active":""}" onclick="heroSet(${i})" aria-label="Diapositiva ${i+1}"></button>`).join("");
+  document.getElementById("heroDots").innerHTML = HERO_SLIDES.map((s,i)=>`<button onclick="heroSet(${i})" aria-label="Diapositiva ${i+1}"></button>`).join("");
+  heroShow();
+}
+function heroShow(){
+  document.querySelectorAll("#heroSlides .hero-slide").forEach((el,i)=>el.classList.toggle("active", i===heroIndex));
+  document.querySelectorAll("#heroDots button").forEach((el,i)=>el.classList.toggle("active", i===heroIndex));
 }
 function heroLinkOf(sl){ return sl.link || ("cat:"+(sl.cat||"pestanas")+"|"+(sl.sub||"all")); }
 function heroClick(i){
@@ -2015,8 +2033,8 @@ function heroClick(i){
   else if(kind==="product"){ openProduct(v); }
   else if(kind==="url"){ if(/^(https?:\/\/|mailto:|tel:)/i.test(v)) window.open(v,"_blank","noopener"); }
 }
-function heroGo(delta){ heroIndex = (heroIndex + delta + HERO_SLIDES.length) % HERO_SLIDES.length; renderHero(); resetHeroTimer(); }
-function heroSet(i){ heroIndex = i; renderHero(); resetHeroTimer(); }
+function heroGo(delta){ heroIndex = (heroIndex + delta + HERO_SLIDES.length) % HERO_SLIDES.length; heroShow(); resetHeroTimer(); }
+function heroSet(i){ heroIndex = i; heroShow(); resetHeroTimer(); }
 function resetHeroTimer(){ clearInterval(heroTimer); heroTimer = setInterval(()=>heroGo(1), 6000); }
 
 
@@ -2068,7 +2086,7 @@ function heroEditRender(){
         <div><label>El botón lleva a (déjalo vacío arriba para ocultar el botón)</label><select onchange="heroEditDest(${i},this.value)">${heroDestOptions(sel)}</select>
           ${sel.startsWith("url:")? `<input type="text" style="margin-top:6px" placeholder="https://wa.me/51950090088 o https://..." value="${escapeHtml(sel.slice(4))}" oninput="heroEditSet(${i},'link','url:'+this.value.trim())">`:""}</div>
         <div><label>Ícono (se muestra si no hay foto)</label><select onchange="heroEditSet(${i},'icon',this.value)">${Object.keys(ICONS).map(k=>`<option value="${k}"${k===(sl.icon||"kit")?" selected":""}>${k}</option>`).join("")}</select></div>
-        <div class="he-full"><label>Imagen de fondo del banner (se recorta a 1920 × 360 px)</label>
+        <div class="he-full"><label>Imagen de fondo del banner (se recorta a 1920 × 480 px)</label>
           <input type="file" accept="image/*" onchange="heroEditPick(${i},this)">
           ${sl.img? `<button type="button" class="admin-del" onclick="heroEditSet(${i},'img','');heroEditRender()">Quitar foto</button>`:""}
           <span class="admin-msg" id="heroImgMsg${i}"></span>
@@ -2110,7 +2128,7 @@ function heroEditPick(i,input){
   const file=input.files[0]; if(!file) return;
   const msg=document.getElementById("heroImgMsg"+i);
   msg.style.color="var(--gold-deep)"; msg.textContent="Subiendo...";
-  heroCropBanner(file,1920,360).then(uploadProductImage).then(url=>{
+  heroCropBanner(file,1920,480).then(uploadProductImage).then(url=>{
     heroEdit[i].img=url; heroEditDirty=true; heroEditRender();
   }).catch(err=>{ msg.style.color="#c0392b"; msg.textContent="Error: "+err.message; });
 }
