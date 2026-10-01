@@ -450,8 +450,6 @@
   .promo-tiles{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1180px;margin:36px auto;padding:0 20px}
   @media (max-width:640px){ .promo-tiles{grid-template-columns:1fr} }
   .promo-tile{border:0;text-align:left;border-radius:10px;padding:32px;min-height:160px;display:flex;flex-direction:column;justify-content:center;gap:8px;color:#fff;cursor:pointer}
-  .promo-tile:nth-child(1){background:linear-gradient(135deg,#c2116a,#7c3a5c)}
-  .promo-tile:nth-child(2){background:linear-gradient(135deg,#3a2a30,#8a2f57)}
   .promo-tile span{font-size:11px;letter-spacing:2px;opacity:.85}
   .promo-tile h3{font-size:21px;color:#fff}
   .promo-tile em{font-style:normal;font-size:12.5px;text-decoration:underline;margin-top:4px}
@@ -566,18 +564,7 @@
   </div>
 
 
-  <div class="promo-tiles">
-    <button class="promo-tile" onclick="goShop('kit-lifting')">
-      <span>DESTACADO</span>
-      <h3>Kits para Lashistas</h3>
-      <em>Ver más ›</em>
-    </button>
-    <button class="promo-tile" onclick="goShop('pinzas-colocar')">
-      <span>ESENCIALES</span>
-      <h3>Herramientas y Curvadores</h3>
-      <em>Ver más ›</em>
-    </button>
-  </div>
+  <div class="promo-tiles" id="promoTiles"></div>
 
   <div class="home-section">
     <div class="home-title">Lo más destacado</div>
@@ -932,6 +919,18 @@
           <button type="button" class="pd-buy" onclick="heroEditSave()">Guardar banner</button>
           <button type="button" class="pd-back" onclick="heroEditRestore()">Restaurar originales</button>
           <span class="admin-msg" id="heroEditMsg"></span>
+        </div>
+      </div>
+
+      <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
+        <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 6px">Tarjetas del inicio (debajo del banner)</h3>
+        <p class="admin-hint" style="margin-bottom:14px">Cambia el texto, los colores, a dónde lleva cada tarjeta y, si quieres, pon una foto de fondo (se recorta sola a 1120 × 320 px). Puedes tener de 1 a 4 tarjetas.</p>
+        <div id="tileEditor"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
+          <button type="button" class="pd-back" onclick="tileEditAdd()">+ Agregar tarjeta</button>
+          <button type="button" class="pd-buy" onclick="tileEditSave()">Guardar tarjetas</button>
+          <button type="button" class="pd-back" onclick="tileEditRestore()">Restaurar originales</button>
+          <span class="admin-msg" id="tileEditMsg"></span>
         </div>
       </div>
     </div>
@@ -2170,6 +2169,122 @@ function heroEditRestore(){
   }).catch(err=>{ msg.style.color="#c0392b"; msg.textContent="Error: "+err.message; });
 }
 
+
+/* ===== Tarjetas del inicio: se leen de Firestore (settings/tiles) y se editan desde el panel admin ===== */
+const TILE_DEFAULTS = [
+  {eyebrow:"DESTACADO",  title:"Kits para Lashistas",       cta:"Ver más", link:"cat:pestanas|kit-lifting",    c1:"#c2116a", c2:"#7c3a5c", img:""},
+  {eyebrow:"ESENCIALES", title:"Herramientas y Curvadores", cta:"Ver más", link:"cat:pestanas|pinzas-colocar", c1:"#3a2a30", c2:"#8a2f57", img:""}
+];
+let TILES = JSON.parse(JSON.stringify(TILE_DEFAULTS));
+const TILE_MAX = 4;
+let tileEdit = [], tileEditDirty = false;
+
+function renderTiles(){
+  const box = document.getElementById("promoTiles"); if(!box) return;
+  box.innerHTML = TILES.map((t,i)=>{
+    const grad = `linear-gradient(135deg,${escapeHtml(t.c1||"#c2116a")},${escapeHtml(t.c2||"#7c3a5c")})`;
+    const bg = t.img ? `linear-gradient(rgba(0,0,0,.38),rgba(0,0,0,.38)),url('${escapeHtml(t.img)}') center/cover` : grad;
+    return `<button class="promo-tile" style="background:${bg}" onclick="tileClick(${i})">
+      ${t.eyebrow? `<span>${escapeHtml(t.eyebrow)}</span>`:""}
+      <h3>${escapeHtml(t.title)}</h3>
+      ${t.cta? `<em>${escapeHtml(t.cta)} ›</em>`:""}
+    </button>`;
+  }).join("");
+}
+function linkGo(l){
+  const k = l.indexOf(":"), kind = l.slice(0,k), v = l.slice(k+1);
+  if(kind==="cat"){ const [c,sb]=v.split("|"); goShop(sb||"all", c||"pestanas"); }
+  else if(kind==="page"){ ({home:goHome, shop:()=>goShop("all"), about:openAbout, contact:openContact, reclamos:openReclamos}[v]||goHome)(); }
+  else if(kind==="product"){ openProduct(v); }
+  else if(kind==="url"){ if(/^(https?:\/\/|mailto:|tel:)/i.test(v)) window.open(v,"_blank","noopener"); }
+}
+function tileClick(i){ const t = TILES[i]; if(t) linkGo(t.link || "page:shop"); }
+
+db.collection("settings").doc("tiles").onSnapshot(doc=>{
+  const d = doc.exists ? doc.data() : null;
+  TILES = (d && Array.isArray(d.tiles) && d.tiles.length) ? d.tiles : JSON.parse(JSON.stringify(TILE_DEFAULTS));
+  try{ localStorage.setItem("jande_tiles_cache", JSON.stringify(TILES)); }catch(e){}
+  renderTiles();
+  if(!tileEditDirty) tileEditReset();
+}, err=>{ console.warn("No se pudieron leer las tarjetas (settings/tiles). Revisa las reglas de Firestore:", err.message); });
+
+function tileEditReset(){
+  tileEdit = JSON.parse(JSON.stringify(TILES));
+  tileEditDirty = false;
+  tileEditRender();
+}
+function tileEditRender(){
+  const box = document.getElementById("tileEditor"); if(!box) return;
+  box.innerHTML = tileEdit.map((t,i)=>{
+    const sel = t.link || "page:shop";
+    const prev = t.img ? `url('${escapeHtml(t.img)}') center/cover` : `linear-gradient(135deg,${escapeHtml(t.c1||"#c2116a")},${escapeHtml(t.c2||"#7c3a5c")})`;
+    return `<div class="he-card">
+      <div class="he-head">
+        <div class="he-thumb" style="background:${prev}"></div>
+        <b>Tarjeta ${i+1}</b>
+        <span style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap">
+          <button type="button" class="admin-edit" onclick="tileEditMove(${i},-1)"${i===0?" disabled":""}>↑</button>
+          <button type="button" class="admin-edit" onclick="tileEditMove(${i},1)"${i===tileEdit.length-1?" disabled":""}>↓</button>
+          <button type="button" class="admin-del" onclick="tileEditDel(${i})">Eliminar</button>
+        </span>
+      </div>
+      <div class="he-grid">
+        <div><label>Etiqueta pequeña (ej. DESTACADO, déjala vacía para ocultarla)</label><input type="text" value="${escapeHtml(t.eyebrow||"")}" maxlength="30" oninput="tileEditSet(${i},'eyebrow',this.value)"></div>
+        <div><label>Título</label><input type="text" value="${escapeHtml(t.title||"")}" maxlength="50" oninput="tileEditSet(${i},'title',this.value)"></div>
+        <div><label>Texto del enlace (vacío = sin enlace "Ver más")</label><input type="text" value="${escapeHtml(t.cta||"")}" maxlength="25" oninput="tileEditSet(${i},'cta',this.value)"></div>
+        <div><label>La tarjeta lleva a</label><select onchange="tileEditDest(${i},this.value)">${heroDestOptions(sel)}</select>
+          ${sel.startsWith("url:")? `<input type="text" style="margin-top:6px" placeholder="https://wa.me/51950090088 o https://..." value="${escapeHtml(sel.slice(4))}" oninput="tileEditSet(${i},'link','url:'+this.value.trim())">`:""}</div>
+        <div><label>Color 1</label><input type="color" value="${escapeHtml(t.c1||"#c2116a")}" oninput="tileEditSet(${i},'c1',this.value)" onchange="tileEditRender()"></div>
+        <div><label>Color 2</label><input type="color" value="${escapeHtml(t.c2||"#7c3a5c")}" oninput="tileEditSet(${i},'c2',this.value)" onchange="tileEditRender()"></div>
+        <div class="he-full"><label>Foto de fondo (opcional, se recorta a 1120 × 320 px; si hay foto, los colores no se usan)</label>
+          <input type="file" accept="image/*" onchange="tileEditPick(${i},this)">
+          ${t.img? `<button type="button" class="admin-del" onclick="tileEditSet(${i},'img','');tileEditRender()">Quitar foto</button>`:""}
+          <span class="admin-msg" id="tileImgMsg${i}"></span>
+        </div>
+      </div>
+    </div>`;
+  }).join("") || `<div class="admin-empty">No hay tarjetas. Agrega una.</div>`;
+}
+function tileEditSet(i,k,v){ if(tileEdit[i]){ tileEdit[i][k]=v; tileEditDirty=true; } }
+function tileEditDest(i,v){ tileEdit[i].link=v; tileEditDirty=true; tileEditRender(); }
+function tileEditAdd(){
+  if(tileEdit.length>=TILE_MAX){ alert("Máximo "+TILE_MAX+" tarjetas."); return; }
+  tileEdit.push({eyebrow:"NUEVO", title:"Nuevo título", cta:"Ver más", link:"page:shop", c1:"#c2116a", c2:"#7c3a5c", img:""});
+  tileEditDirty=true; tileEditRender();
+}
+function tileEditDel(i){ if(!confirm("¿Eliminar la tarjeta "+(i+1)+"?")) return; tileEdit.splice(i,1); tileEditDirty=true; tileEditRender(); }
+function tileEditMove(i,d){ const j=i+d; if(j<0||j>=tileEdit.length) return; [tileEdit[i],tileEdit[j]]=[tileEdit[j],tileEdit[i]]; tileEditDirty=true; tileEditRender(); }
+function tileEditPick(i,input){
+  const file=input.files[0]; if(!file) return;
+  const msg=document.getElementById("tileImgMsg"+i);
+  msg.style.color="var(--gold-deep)"; msg.textContent="Subiendo...";
+  heroCropBanner(file,1120,320).then(uploadProductImage).then(url=>{
+    tileEdit[i].img=url; tileEditDirty=true; tileEditRender();
+  }).catch(err=>{ msg.style.color="#c0392b"; msg.textContent="Error: "+err.message; });
+}
+function tileEditSave(){
+  const msg=document.getElementById("tileEditMsg");
+  const tiles=tileEdit.map(t=>({
+    eyebrow:(t.eyebrow||"").trim(), title:(t.title||"").trim(), cta:(t.cta||"").trim(),
+    link:t.link||"page:shop", c1:t.c1||"#c2116a", c2:t.c2||"#7c3a5c", img:t.img||""
+  }));
+  if(!tiles.length || tiles.some(x=>!x.title)){ msg.style.color="#c0392b"; msg.textContent="Cada tarjeta necesita un título."; return; }
+  msg.style.color="var(--gold-deep)"; msg.textContent="Guardando...";
+  db.collection("settings").doc("tiles").set({tiles, updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{
+    tileEditDirty=false; msg.style.color="#2e8b57"; msg.textContent="✓ Tarjetas guardadas. Ya se ven en la tienda.";
+  }).catch(err=>{
+    msg.style.color="#c0392b";
+    msg.textContent="Error: "+err.message+" (falta la regla de Firestore para settings/tiles).";
+  });
+}
+function tileEditRestore(){
+  if(!confirm("¿Volver a las tarjetas originales? Se perderán tus cambios guardados.")) return;
+  const msg=document.getElementById("tileEditMsg");
+  db.collection("settings").doc("tiles").delete().then(()=>{
+    tileEditDirty=false; msg.style.color="#2e8b57"; msg.textContent="✓ Tarjetas originales restauradas.";
+  }).catch(err=>{ msg.style.color="#c0392b"; msg.textContent="Error: "+err.message; });
+}
+
 function renderHomePreview(){
   document.getElementById("homeGrid").innerHTML = PRODUCTS.slice(0,6).map(productCardHTML).join("");
 }
@@ -2179,6 +2294,11 @@ try{
   if(Array.isArray(c) && c.length){ HERO_SLIDES = c; renderHero(); }   // segunda visita en adelante: aparece al instante
 }catch(e){}
 // sin caché (primera visita) el banner queda vacío y sin flechas hasta que Firestore responda
+try{
+  const tc = JSON.parse(localStorage.getItem("jande_tiles_cache")||"null");
+  if(Array.isArray(tc) && tc.length) TILES = tc;
+}catch(e){}
+renderTiles();
 resetHeroTimer();
 renderHomePreview();
 showView("home");
@@ -2296,6 +2416,7 @@ auth.onAuthStateChanged(user=>{
     renderAdminCouponList();
     renderAdminOrders();
     if(!heroEditDirty) heroEditReset();
+    if(!tileEditDirty) tileEditReset();
   } else {
     loginBox.style.display = "block";
     dash.style.display = "none";
