@@ -1887,7 +1887,7 @@ function renderCart(){
   const discount = (appliedCoupon && cart.length) ? couponDiscount(appliedCoupon, subtotal - bulk.total) : 0;
   document.getElementById("cartSubtotal").textContent = "S/"+subtotal.toFixed(2);
   document.getElementById("cartBulkRows").innerHTML = bulk.items.map(b=>
-    `<div class="drawer-total" style="font-size:13px;font-weight:500;color:#2e8b57"><span>${escapeHtml(b.label)} (${b.units} u. · -${b.tag})</span><span>-S/${b.amount.toFixed(2)}</span></div>`).join("");
+    `<div class="drawer-total" style="font-size:13px;font-weight:500;color:#2e8b57;align-items:flex-start;gap:12px"><span style="flex:1;min-width:0;overflow-wrap:anywhere">${escapeHtml(b.label)}<small style="display:block;font-weight:400;font-size:12px;opacity:.85">${b.units} u. · ${escapeHtml(b.tag)} de descuento</small></span><span style="white-space:nowrap;flex-shrink:0">-S/${b.amount.toFixed(2)}</span></div>`).join("");
   const discRow = document.getElementById("cartDiscountRow");
   if(discount > 0){
     discRow.style.display = "flex";
@@ -1977,6 +1977,15 @@ function cartLineSub(c){
   const p = PRODUCTS.find(x=>x.id===c.id);
   return p ? p.sub : c.sub;
 }
+function discAutoName(d){
+  const title = t => String(t).replace(/(^|\s)(\p{L})/gu,(m,a,b)=>a+b.toUpperCase()).replace(/\sDe\s/g," de ");
+  if(d.subs.length === 1){
+    const k = d.subs[0].split("|");
+    if(k.length === 3 && DISC_TYPES[k[0]+"|"+k[1]] && DISC_TYPES[k[0]+"|"+k[1]][k[2]]) return title(DISC_TYPES[k[0]+"|"+k[1]][k[2]]);
+    if(CATEGORIES[k[0]] && CATEGORIES[k[0]].subs[k[1]]) return title(CATEGORIES[k[0]].subs[k[1]]);
+  }
+  return "Descuento por cantidad";
+}
 function bulkDiscount(items){
   if(!DISC || !DISC.length) return {items:[], total:0};
   // Los descuentos se suman: cada uno revisa por su cuenta qué productos del carrito le corresponden
@@ -1995,7 +2004,7 @@ function bulkDiscount(items){
     if(!hit) return;
     const amount = hit.type === "fixed" ? Math.min(hit.value, sum) : Math.round(sum*hit.value)/100;
     total += amount;
-    out.push({label:d.name || "Descuento por cantidad", units, amount, tag: hit.type === "fixed" ? "S/"+hit.value.toFixed(2) : hit.value+"%"});
+    out.push({label:d.name || discAutoName(d), units, amount, tag: hit.type === "fixed" ? "S/"+hit.value.toFixed(2) : hit.value+"%"});
   });
   return {items:out, total:Math.min(total, items.reduce((a,c)=>a+c.price*c.qty,0))};
 }
@@ -2213,7 +2222,7 @@ function checkout(){
   if(window.track) track("begin_checkout",{id:"cart",name:"Carrito",price:0,qty:cart.length,value:total});
   const lines = cart.map(c=>`• ${c.name} x${c.qty} — S/${(c.price*c.qty).toFixed(2)}`).join("%0A");
   let msg = `Hola Jandé Shop! Quiero hacer este pedido:%0A${lines}%0A%0ASubtotal: S/${subtotal.toFixed(2)}`;
-  bulk.items.forEach(b=>{ msg += `%0A${encodeURIComponent(b.label+" ("+b.units+" u., -"+b.tag+")")}: -S/${b.amount.toFixed(2)}`; });
+  bulk.items.forEach(b=>{ msg += `%0A${encodeURIComponent(b.label+" ("+b.units+" u., "+b.tag+" de descuento)")}: -S/${b.amount.toFixed(2)}`; });
   if(discount > 0) msg += `%0ADescuento (${appliedCoupon.code} ${encodeURIComponent(couponLabel(appliedCoupon))}): -S/${discount.toFixed(2)}`;
   msg += deliveryMode === "local"
     ? `%0AEntrega: Compra local (sin costo de envío)%0ATotal: S/${total.toFixed(2)}`
