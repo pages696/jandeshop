@@ -1257,13 +1257,17 @@ let PRODUCTS = [];
    automáticamente para todas las personas que tengan la tienda abierta. */
 db.collection("products").onSnapshot(snap=>{
   PRODUCTS = snap.docs.map(doc=>({id:doc.id, ...doc.data()}));
+  syncPriceBounds();
   renderTopCats();
   renderFooterCats();
   renderSidebarCats();
   renderHomePreview();
   renderProducts();
   renderCart();
-  if(pdCurrent){ const fresh = PRODUCTS.find(p=>p.id===pdCurrent.id); if(fresh) openProduct(fresh.id); }
+  // Solo se refresca el detalle si el cliente está VIENDO ese producto en este momento
+  if(pdCurrent && document.getElementById("productView").style.display === "block"){
+    const fresh = PRODUCTS.find(p=>p.id===pdCurrent.id); if(fresh) openProduct(fresh.id, true);
+  }
   renderAdminProductList();
 }, err=>{
   console.error("Error cargando productos de Firestore:", err);
@@ -1392,6 +1396,21 @@ function renderFooterCats(){
 const PAGE_SIZE = 6;
 
 let state = { activeCat:"pestanas", sub:"all", search:"", minPrice:10, maxPrice:120, sort:"default", page:1 };
+// Límites del filtro de precio: se ajustan solos al producto más barato y al más caro
+let PRICE_MIN = 10, PRICE_MAX = 120;
+function syncPriceBounds(){
+  const prices = PRODUCTS.map(p=>Number(p.price)).filter(n=>isFinite(n));
+  if(!prices.length) return;
+  const lo = Math.max(0, Math.floor(Math.min(...prices)));
+  const hi = Math.max(lo + 5, Math.ceil(Math.max(...prices)));
+  const wasFull = state.minPrice <= PRICE_MIN && state.maxPrice >= PRICE_MAX;   // el cliente no movió el filtro
+  PRICE_MIN = lo; PRICE_MAX = hi;
+  const mn = document.getElementById("minRange"), mx = document.getElementById("maxRange");
+  mn.min = mx.min = lo; mn.max = mx.max = hi;
+  if(wasFull){ mn.value = lo; mx.value = hi; }
+  else { mn.value = Math.min(hi, Math.max(lo, state.minPrice)); mx.value = Math.min(hi, Math.max(lo, state.maxPrice)); }
+  updateRangeUI();
+}
 /* ===== Favoritos (wishlist), guardados por cuenta como el carrito ===== */
 let wishlist = [];
 let wishlistLoaded = false;
@@ -1560,9 +1579,10 @@ function pdSelectImage(idx){
   document.querySelectorAll("#pdThumbs .pd-thumb").forEach((el,i)=>el.classList.toggle("active", i===idx));
 }
 
-function openProduct(id){
+function openProduct(id, silent){
+  // silent = true: solo refresca los datos del producto que ya se está viendo (sin cambiar de página)
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
-  pdCurrent = p; pdQty = 1;
+  pdCurrent = p; pdQty = silent ? pdQty : 1;
   document.getElementById("pdCrumbName").textContent = p.name;
   document.getElementById("pdCrumbCat").textContent = CATEGORIES[p.cat] ? CATEGORIES[p.cat].label : "Productos";
   document.getElementById("pdName").textContent = p.name;
@@ -1592,6 +1612,7 @@ function openProduct(id){
   pdBuyBtn.innerHTML = outOfStock ? "Agotado" : "🛍️ Comprar";
   const pdWishBtn = document.getElementById("pdWishBtn");
   if(pdWishBtn) pdWishBtn.classList.toggle("active", wishlist.includes(p.id));
+  if(silent){ renderRelatedProducts(p); return; }
   clearTopCatsActive();
   showView("product");
   loadReviewsFor(p.id);
@@ -1722,10 +1743,10 @@ function applyFilters(){
 }
 
 function clearFilters(){
-  state.sub = "all"; state.search = ""; state.minPrice = 10; state.maxPrice = 120; state.sort = "default"; state.page = 1;
+  state.sub = "all"; state.search = ""; state.minPrice = PRICE_MIN; state.maxPrice = PRICE_MAX; state.sort = "default"; state.page = 1;
   document.getElementById("searchInput").value = "";
-  document.getElementById("minRange").value = 10;
-  document.getElementById("maxRange").value = 120;
+  document.getElementById("minRange").value = PRICE_MIN;
+  document.getElementById("maxRange").value = PRICE_MAX;
   document.getElementById("sortSelect").value = "default";
   renderSidebarCats();
   updateRangeUI();
@@ -1798,8 +1819,8 @@ function updateRangeUI(){
   if(a > b - 5){ a = b - 5; min.value = a; }
   state.minPrice = a; state.maxPrice = b;
   document.getElementById("priceLabel").textContent = `S/${a} — S/${b}`;
-  const range = 120-10;
-  const left = ((a-10)/range)*100, right = ((b-10)/range)*100;
+  const range = Math.max(1, PRICE_MAX - PRICE_MIN);
+  const left = ((a-PRICE_MIN)/range)*100, right = ((b-PRICE_MIN)/range)*100;
   const fill = document.getElementById("rangeFill");
   fill.style.left = left+"%"; fill.style.width = (right-left)+"%";
 }
