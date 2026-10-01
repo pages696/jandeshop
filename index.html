@@ -519,6 +519,7 @@
 </script>
 </head>
 <body>
+<div id="pageVeil" style="position:fixed;inset:0;background:#fff;z-index:99999;transition:opacity .35s ease"></div>
 
 <div class="topbar">
   <div class="wrap topbar-row">
@@ -2008,6 +2009,8 @@ HERO_SLIDES.forEach(x=>{ x.eyebrow += " · JANDÉ SHOP"; });
 const HERO_DEFAULTS = JSON.parse(JSON.stringify(HERO_SLIDES));
 let heroIndex = 0, heroTimer;
 let heroKey="";
+function heroReveal(){ const v=document.getElementById("pageVeil"); if(!v) return; v.style.opacity="0"; v.style.pointerEvents="none"; setTimeout(()=>v.remove(),400); }
+setTimeout(heroReveal,5000);   // seguro: pase lo que pase, a los 5 s se muestra la tienda
 function renderHero(){
   heroKey = JSON.stringify(HERO_SLIDES);
   document.querySelector(".hero-slider").classList.remove("hero-loading");
@@ -2027,6 +2030,9 @@ function renderHero(){
     </div>`).join("");
   document.getElementById("heroDots").innerHTML = HERO_SLIDES.map((s,i)=>`<button onclick="heroSet(${i})" aria-label="Diapositiva ${i+1}"></button>`).join("");
   heroShow();
+  const img0 = document.querySelector("#heroSlides .hero-slide.active .hero-bg");
+  if(img0 && !img0.complete){ img0.addEventListener("load",heroReveal); img0.addEventListener("error",heroReveal); }
+  else heroReveal();
 }
 function heroShow(){
   document.querySelectorAll("#heroSlides .hero-slide").forEach((el,i)=>el.classList.toggle("active", i===heroIndex));
@@ -2054,7 +2060,7 @@ db.collection("settings").doc("hero").onSnapshot(doc=>{
   try{ localStorage.setItem("jande_hero_cache", JSON.stringify(HERO_SLIDES)); }catch(e){}
   if(JSON.stringify(HERO_SLIDES) !== heroKey) renderHero();   // si es igual al que ya se ve (caché), no se toca
   if(!heroEditDirty) heroEditReset();
-}, err=>console.warn("No se pudo leer el banner (settings/hero). Revisa las reglas de Firestore:", err.message));
+}, err=>{ console.warn("No se pudo leer el banner (settings/hero). Revisa las reglas de Firestore:", err.message); heroReveal(); });
 
 let heroEdit = [], heroEditDirty = false;
 const HERO_MAX = 6;
