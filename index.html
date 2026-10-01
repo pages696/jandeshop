@@ -874,6 +874,11 @@
         <button class="pd-buy" onclick="seedProducts()">Cargar catálogo de ejemplo (12 productos)</button>
       </div>
 
+      <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px;font-size:13px">
+        <span style="color:var(--muted)">Productos agrupados por categoría y subcategoría:</span>
+        <button type="button" class="admin-edit" onclick="adminCatsAll(false)">Expandir todo</button>
+        <button type="button" class="admin-edit" onclick="adminCatsAll(true)">Contraer todo</button>
+      </div>
       <div class="admin-table-wrap">
         <table class="admin-table" id="adminTable">
           <thead><tr><th></th><th>Producto</th><th>Categoría</th><th>Precio</th><th>Stock</th><th></th></tr></thead>
@@ -2867,6 +2872,34 @@ document.getElementById("adminLoginForm").addEventListener("submit", e=>{
 
 function adminLogout(){ auth.signOut(); }
 
+/* Tercera línea de la columna Categoría: el "sub de sub" (tipo) cuando la subcategoría los usa */
+function adminTipoLine(p){
+  const types = DISC_TYPES[(p.cat||"pestanas")+"|"+p.sub];
+  if(!types) return "";
+  const ok = p.tipo && types[p.tipo];
+  return `<br><small style="color:${ok?"var(--gold-deep)":"#e6a817"};font-weight:600">↳ ${ok ? types[p.tipo] : "Sin tipo"}</small>`;
+}
+let adminCatClosed = {};
+function adminToggleCat(k){ adminCatClosed[k] = !adminCatClosed[k]; renderAdminProductList(); }
+function adminCatsAll(close){
+  const keys = CAT_ORDER.concat(["otros"]);
+  adminCatClosed = {}; if(close) keys.forEach(k=>adminCatClosed[k] = true);
+  renderAdminProductList();
+}
+function adminProductRow(p){
+  return `
+    <tr>
+      <td><img class="admin-thumb" src="${p.img||""}" onerror="this.style.visibility='hidden'"></td>
+      <td>${p.name}</td>
+      <td>${(CATEGORIES[p.cat||"pestanas"]||{}).label||""}<br><small style="color:var(--muted)">${SUBCAT_LABEL[p.sub]||p.sub||""}</small>${adminTipoLine(p)}</td>
+      <td>S/${Number(p.price||0).toFixed(2)}</td>
+      <td style="color:${(p.stock||0)<=0?'#c0392b':(p.stock||0)<=5?'#e6a817':'inherit'};font-weight:600">${p.stock!=null ? p.stock : "—"}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="admin-edit" onclick="openProductForm('${p.id}')">Editar</button>
+        <button class="admin-del" onclick="deleteProduct('${p.id}')">Eliminar</button>
+      </td>
+    </tr>`;
+}
 function renderAdminProductList(){
   const tbody = document.getElementById("adminTableBody");
   if(!tbody) return;
@@ -2877,18 +2910,34 @@ function renderAdminProductList(){
     return;
   }
   if(empty) empty.style.display = "none";
-  tbody.innerHTML = PRODUCTS.map(p=>`
-    <tr>
-      <td><img class="admin-thumb" src="${p.img||""}" onerror="this.style.visibility='hidden'"></td>
-      <td>${p.name}</td>
-      <td>${(CATEGORIES[p.cat||"pestanas"]||{}).label||""}<br><small style="color:var(--muted)">${SUBCAT_LABEL[p.sub]||p.sub||""}</small></td>
-      <td>S/${Number(p.price||0).toFixed(2)}</td>
-      <td style="color:${(p.stock||0)<=0?'#c0392b':(p.stock||0)<=5?'#e6a817':'inherit'};font-weight:600">${p.stock!=null ? p.stock : "—"}</td>
-      <td style="text-align:right;white-space:nowrap">
-        <button class="admin-edit" onclick="openProductForm('${p.id}')">Editar</button>
-        <button class="admin-del" onclick="deleteProduct('${p.id}')">Eliminar</button>
-      </td>
-    </tr>`).join("");
+
+  // agrupar por categoría (en el orden del menú); lo que no encaje va a "Sin categoría"
+  const groups = {};
+  PRODUCTS.forEach(p=>{
+    const k = CATEGORIES[p.cat || "pestanas"] ? (p.cat || "pestanas") : "otros";
+    (groups[k] = groups[k] || []).push(p);
+  });
+  tbody.innerHTML = CAT_ORDER.concat(["otros"]).filter(k=>groups[k]).map(k=>{
+    const list = groups[k], closed = !!adminCatClosed[k];
+    const subKeys = k === "otros" ? [] : Object.keys(CATEGORIES[k].subs);
+    const subIdx = sb => { const i = subKeys.indexOf(sb); return i < 0 ? 9999 : i; };
+    list.sort((a,b)=> subIdx(a.sub) - subIdx(b.sub) || String(a.name).localeCompare(String(b.name), "es"));
+    const label = k === "otros" ? "Sin categoría" : CATEGORIES[k].label;
+    let html = `<tr onclick="adminToggleCat('${k}')" style="cursor:pointer;background:#fdf0f6">
+      <td colspan="6" style="padding:12px 10px;font-weight:700;color:var(--gold-deep);font-size:14px">${closed ? "▸" : "▾"} ${escapeHtml(label)} <span style="font-weight:500;color:var(--muted);font-size:12.5px">· ${list.length} ${list.length===1?"producto":"productos"}</span></td></tr>`;
+    if(!closed){
+      const counts = {}; list.forEach(p=>{ counts[p.sub] = (counts[p.sub] || 0) + 1; });
+      let lastSub = Symbol();
+      list.forEach(p=>{
+        if(p.sub !== lastSub){
+          lastSub = p.sub;
+          html += `<tr><td colspan="6" style="padding:7px 10px 7px 22px;background:#fafafa;font-size:12.5px;font-weight:600;color:var(--muted)">${escapeHtml(SUBCAT_LABEL[p.sub] || p.sub || "Sin subcategoría")} · ${counts[p.sub]}</td></tr>`;
+        }
+        html += adminProductRow(p);
+      });
+    }
+    return html;
+  }).join("");
 }
 
 /* ===== Cupones de descuento ===== */
