@@ -1010,6 +1010,9 @@
         <div><label>Subcategoría</label>
           <select id="pfSub" required></select>
         </div>
+        <div id="pfTipoWrap" style="display:none"><label>Tipo de extensión (solo para descuentos por cantidad)</label>
+          <select id="pfTipo"></select>
+        </div>
         <div><label>Stock disponible</label><input type="number" step="1" min="0" id="pfStock" placeholder="Ej: 20" required></div>
         <div><label>Precio (S/)</label><input type="number" step="0.01" min="0" id="pfPrice" required></div>
         <div><label>Precio anterior (opcional, para descuento)</label><input type="number" step="0.01" min="0" id="pfOrig"></div>
@@ -1888,10 +1891,17 @@ function renderCart(){
 let DISC = null;
 let discEdit = null, discEditDirty = false;
 let discLoaded = false, discOpenCats = {};
+/* Tipos internos dentro de una subcategoría: solo sirven para elegir a qué productos
+   se aplica el descuento. No son subcategorías de la tienda (no salen en menús ni filtros). */
+const DISC_TYPES = {
+  "pestanas|extensiones-pestana": {libros:"Libros de pestañas", hojas:"Hojas de pestañas", pares:"Pares de pestañas"}
+};
 
 function discSubValid(key){
   const k = String(key).split("|");
-  return !!(CATEGORIES[k[0]] && CATEGORIES[k[0]].subs[k[1]]);
+  if(!(CATEGORIES[k[0]] && CATEGORIES[k[0]].subs[k[1]])) return false;
+  if(k.length === 3) return !!(DISC_TYPES[k[0]+"|"+k[1]] && DISC_TYPES[k[0]+"|"+k[1]][k[2]]);
+  return k.length === 2;
 }
 function discCleanTiers(t){
   return (Array.isArray(t)?t:[]).map(x=>{
@@ -1924,6 +1934,10 @@ function cartLineCat(c){
   const p = PRODUCTS.find(x=>x.id===c.id);
   return (p && p.cat) || c.cat || "pestanas";
 }
+function cartLineTipo(c){
+  const p = PRODUCTS.find(x=>x.id===c.id);
+  return p ? p.tipo : c.tipo;
+}
 function cartLineSub(c){
   const p = PRODUCTS.find(x=>x.id===c.id);
   return p ? p.sub : c.sub;
@@ -1932,7 +1946,8 @@ function bulkDiscount(items){
   if(!DISC) return {items:[], total:0};
   let units = 0, sum = 0;
   items.forEach(c=>{
-    if(DISC.subs.includes(cartLineCat(c)+"|"+cartLineSub(c))){ units += c.qty; sum += c.price*c.qty; }
+    const k = cartLineCat(c)+"|"+cartLineSub(c), tipo = cartLineTipo(c);
+    if(DISC.subs.includes(k) || (tipo && DISC.subs.includes(k+"|"+tipo))){ units += c.qty; sum += c.price*c.qty; }
   });
   const hit = DISC.tiers.filter(t=>units >= t.qty).sort((x,y)=>y.qty-x.qty)[0];
   if(!hit) return {items:[], total:0};
@@ -1963,18 +1978,24 @@ function discEditRender(){
   let total = 0;
   const subsHtml = CAT_ORDER.map(cat=>{
     const subs = CATEGORIES[cat].subs, keys = Object.keys(subs);
-    const selected = keys.filter(k=>discEdit.subs.includes(cat+"|"+k)).length;
+    const selected = discEdit.subs.filter(x=>x.indexOf(cat+"|") === 0).length;
     total += selected;
-    const all = keys.length > 0 && selected === keys.length;
+    const all = keys.length > 0 && keys.every(k=>discEdit.subs.includes(cat+"|"+k));
     const open = discOpenCats[cat] !== undefined ? discOpenCats[cat] : selected > 0;
     return `<div style="margin-bottom:8px;border:1px solid var(--line);border-radius:10px;padding:8px 12px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600"><input type="checkbox" ${all?"checked":""} onchange="discEditCatAll('${cat}',this.checked)"> ${escapeHtml(CATEGORIES[cat].label)} (todas)</label>
-        <span style="font-size:12px;color:${selected?"var(--gold-deep)":"var(--muted)"}">${selected} de ${keys.length} marcadas</span>
+        <span style="font-size:12px;color:${selected?"var(--gold-deep)":"var(--muted)"}">${selected} ${selected===1?"marcada":"marcadas"}</span>
         <button type="button" class="admin-edit" onclick="discToggleCat('${cat}')" style="margin-left:auto">${open?"Ocultar subcategorías":"Ver subcategorías"}</button>
       </div>
-      ${open ? `<div style="display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 0 2px 4px">${keys.map(k=>
-        `<label style="display:flex;align-items:center;gap:5px;font-size:13px"><input type="checkbox" ${discEdit.subs.includes(cat+"|"+k)?"checked":""} onchange="discEditSub('${cat}|${k}',this.checked)"> ${escapeHtml(subs[k])}</label>`).join("")}</div>` : ""}
+      ${open ? `<div style="display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 0 2px 4px">${keys.map(k=>{
+        const types = DISC_TYPES[cat+"|"+k], parentOn = discEdit.subs.includes(cat+"|"+k);
+        const lbl = `<label style="display:flex;align-items:center;gap:5px;font-size:13px"><input type="checkbox" ${parentOn?"checked":""} onchange="discEditSub('${cat}|${k}',this.checked)"> ${escapeHtml(subs[k])}</label>`;
+        if(!types) return lbl;
+        return `<div style="flex-basis:100%">${lbl}<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:6px 0 4px 26px;${parentOn?"opacity:.55":""}">
+          <span style="font-size:12px;color:var(--muted)">Solo estos tipos (se asigna en cada producto):</span>${Object.keys(types).map(t=>
+          `<label style="display:flex;align-items:center;gap:5px;font-size:13px"><input type="checkbox" ${discEdit.subs.includes(cat+"|"+k+"|"+t)?"checked":""} onchange="discEditSub('${cat}|${k}|${t}',this.checked)"> ${escapeHtml(types[t])}</label>`).join("")}</div></div>`;
+      }).join("")}</div>` : ""}
     </div>`;
   }).join("");
   box.innerHTML = `<div style="border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff">
@@ -1982,7 +2003,7 @@ function discEditRender(){
       <b>Descuento por cantidad</b>
       <button type="button" class="admin-del" onclick="discEditDel()">Quitar descuento</button>
     </div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Subcategorías donde se aplica (los productos marcados se cuentan juntos) · <b style="color:${total?"var(--gold-deep)":"#c0392b"}">${total} marcadas en total</b></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Subcategorías donde se aplica (los productos marcados se cuentan juntos) · <b style="color:${total?"var(--gold-deep)":"#c0392b"}">${total} ${total===1?"marcada":"marcadas"} en total</b></div>
     ${subsHtml}
     <div style="font-size:12px;color:var(--muted);margin:14px 0 6px">Niveles de descuento</div>
     ${discEdit.tiers.map((t,j)=>`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:13px">
@@ -1995,7 +2016,7 @@ function discEditRender(){
 }
 function discToggleCat(cat){
   const keys = Object.keys(CATEGORIES[cat].subs);
-  const cur = discOpenCats[cat] !== undefined ? discOpenCats[cat] : (discEdit && keys.some(k=>discEdit.subs.includes(cat+"|"+k)));
+  const cur = discOpenCats[cat] !== undefined ? discOpenCats[cat] : (discEdit && discEdit.subs.some(x=>x.indexOf(cat+"|") === 0));
   discOpenCats[cat] = !cur; discEditRender();
 }
 function discEditDiscard(){
@@ -2012,7 +2033,7 @@ function discEditDel(){
 }
 function discEditCatAll(cat,on){
   const keys = Object.keys(CATEGORIES[cat].subs).map(k=>cat+"|"+k);
-  discEdit.subs = discEdit.subs.filter(x=>!keys.includes(x));
+  discEdit.subs = discEdit.subs.filter(x=>x.indexOf(cat+"|") !== 0);   // quita subcategorías y tipos de esta categoría
   if(on) discEdit.subs = discEdit.subs.concat(keys);
   discEditDirty = true; discEditRender();
 }
@@ -2943,7 +2964,19 @@ function pfPopulateSubs(catKey, selectedSub){
   const subs = (CATEGORIES[catKey] && CATEGORIES[catKey].subs) || {};
   subSel.innerHTML = Object.keys(subs).map(k=>`<option value="${k}">${subs[k]}</option>`).join("");
   if(selectedSub && subs[selectedSub]) subSel.value = selectedSub;
+  pfUpdateTipo();
 }
+/* Muestra el selector de tipo solo en subcategorías que lo usan (p. ej. Extensiones de pestaña) */
+function pfUpdateTipo(selectedTipo){
+  const wrap = document.getElementById("pfTipoWrap"), sel = document.getElementById("pfTipo");
+  const types = DISC_TYPES[document.getElementById("pfCat").value + "|" + document.getElementById("pfSub").value];
+  if(!types){ wrap.style.display = "none"; sel.innerHTML = ""; return; }
+  const keep = selectedTipo !== undefined ? selectedTipo : sel.value;
+  sel.innerHTML = `<option value="">Sin tipo</option>` + Object.keys(types).map(t=>`<option value="${t}">${types[t]}</option>`).join("");
+  sel.value = types[keep] ? keep : "";
+  wrap.style.display = "";
+}
+document.getElementById("pfSub").addEventListener("change", ()=>pfUpdateTipo());
 document.getElementById("pfCat").addEventListener("change", e=>{ pfPopulateSubs(e.target.value); });
 
 function openProductForm(id){
@@ -2963,6 +2996,7 @@ function openProductForm(id){
     document.getElementById("pfName").value = p.name||"";
     document.getElementById("pfCat").value = cat;
     pfPopulateSubs(cat, p.sub);
+    pfUpdateTipo(p.tipo || "");
     document.getElementById("pfStock").value = (p.stock!=null ? p.stock : 0);
     document.getElementById("pfPrice").value = p.price||"";
     document.getElementById("pfOrig").value = p.orig||"";
@@ -3027,6 +3061,7 @@ document.getElementById("productForm").addEventListener("submit", e=>{
     name: document.getElementById("pfName").value.trim(),
     cat: document.getElementById("pfCat").value,
     sub: document.getElementById("pfSub").value,
+    tipo: (document.getElementById("pfTipoWrap").style.display !== "none" && document.getElementById("pfTipo").value) || null,
     stock: parseInt(document.getElementById("pfStock").value, 10) || 0,
     price: parseFloat(document.getElementById("pfPrice").value) || 0,
     orig: document.getElementById("pfOrig").value ? parseFloat(document.getElementById("pfOrig").value) : null,
