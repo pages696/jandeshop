@@ -913,13 +913,14 @@
 
       <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
         <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 6px">Descuento por cantidad</h3>
-        <p class="admin-hint" style="margin-bottom:14px">Hay un solo descuento: lo agregas o lo quitas cuando quieras. Marca las subcategorías donde se aplica (los productos de todas las marcadas se cuentan juntos) y define los niveles: "al llevar N o más productos, descuento de X", donde X puede ser un porcentaje (%) o un monto fijo en soles (S/, se resta una sola vez). Se aplica el nivel más alto que alcance el cliente. Recuerda pulsar <b>Guardar descuento</b> después de cada cambio.</p>
-        <div id="discEditor"></div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
-          <button type="button" class="pd-back" id="discAddBtn" onclick="discEditAdd()">+ Agregar descuento</button>
+        <p class="admin-hint" style="margin-bottom:14px">Marca las subcategorías donde se aplica (los productos de todas las marcadas se cuentan juntos) y define los niveles: "al llevar N o más productos, descuento de X", donde X puede ser un porcentaje (%) o un monto fijo en soles (S/, se resta una sola vez). Se aplica el nivel más alto que alcance el cliente. Recuerda pulsar <b>Guardar descuento</b> después de cada cambio.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+          <button type="button" class="pd-back" id="discAddBtn" onclick="discEditAdd()" style="display:none">+ Agregar descuento</button>
           <button type="button" class="pd-buy" onclick="discEditSave()">Guardar descuento</button>
+          <button type="button" class="pd-back" onclick="discEditDiscard()">Descartar cambios</button>
           <span class="admin-msg" id="discEditMsg"></span>
         </div>
+        <div id="discEditor"><div class="admin-empty">Cargando descuento…</div></div>
       </div>
 
       <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
@@ -1886,6 +1887,7 @@ function renderCart(){
    Se aplica el nivel más alto alcanzado. */
 let DISC = null;
 let discEdit = null, discEditDirty = false;
+let discLoaded = false, discOpenCats = {};
 
 function discSubValid(key){
   const k = String(key).split("|");
@@ -1939,9 +1941,13 @@ function bulkDiscount(items){
 }
 db.collection("settings").doc("discounts").onSnapshot(doc=>{
   DISC = discNorm(doc.exists ? doc.data() : null);
-  renderCart();
-  if(!discEditDirty) discEditReset();
-}, err=>{ console.warn("No se pudo leer el descuento (settings/discounts). Revisa las reglas de Firestore:", err.message); });
+  discLoaded = true;
+  if(!discEditDirty) discEditReset(); else discEditRender();
+  try{ renderCart(); }catch(e){ console.warn("renderCart:", e); }
+}, err=>{
+  console.warn("No se pudo leer el descuento (settings/discounts). Revisa las reglas de Firestore:", err.message);
+  discLoaded = true; discEditRender();
+});
 
 function discEditReset(){
   discEdit = DISC ? JSON.parse(JSON.stringify(DISC)) : null;
@@ -1950,16 +1956,25 @@ function discEditReset(){
 }
 function discEditRender(){
   const box = document.getElementById("discEditor"); if(!box) return;
-  const addBtn = document.getElementById("discAddBtn"); if(addBtn) addBtn.style.display = discEdit ? "none" : "";
+  const addBtn = document.getElementById("discAddBtn"); if(addBtn) addBtn.style.display = (discLoaded && !discEdit) ? "" : "none";
+  if(!discLoaded){ box.innerHTML = `<div class="admin-empty">Cargando descuento…</div>`; return; }
   if(!discEdit){ box.innerHTML = `<div class="admin-empty">No hay ningún descuento activo. Pulsa "+ Agregar descuento".</div>`; return; }
   const fld = "padding:7px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit";
+  let total = 0;
   const subsHtml = CAT_ORDER.map(cat=>{
     const subs = CATEGORIES[cat].subs, keys = Object.keys(subs);
-    const all = keys.length && keys.every(k=>discEdit.subs.includes(cat+"|"+k));
-    return `<div style="margin-bottom:10px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px"><input type="checkbox" ${all?"checked":""} onchange="discEditCatAll('${cat}',this.checked)"> ${escapeHtml(CATEGORIES[cat].label)} <span style="font-weight:400;color:var(--muted)">(marcar todas)</span></label>
-      <div style="display:flex;flex-wrap:wrap;gap:4px 16px;padding-left:22px">${keys.map(k=>
-        `<label style="display:flex;align-items:center;gap:5px;font-size:13px"><input type="checkbox" ${discEdit.subs.includes(cat+"|"+k)?"checked":""} onchange="discEditSub('${cat}|${k}',this.checked)"> ${escapeHtml(subs[k])}</label>`).join("")}</div>
+    const selected = keys.filter(k=>discEdit.subs.includes(cat+"|"+k)).length;
+    total += selected;
+    const all = keys.length > 0 && selected === keys.length;
+    const open = discOpenCats[cat] !== undefined ? discOpenCats[cat] : selected > 0;
+    return `<div style="margin-bottom:8px;border:1px solid var(--line);border-radius:10px;padding:8px 12px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600"><input type="checkbox" ${all?"checked":""} onchange="discEditCatAll('${cat}',this.checked)"> ${escapeHtml(CATEGORIES[cat].label)} (todas)</label>
+        <span style="font-size:12px;color:${selected?"var(--gold-deep)":"var(--muted)"}">${selected} de ${keys.length} marcadas</span>
+        <button type="button" class="admin-edit" onclick="discToggleCat('${cat}')" style="margin-left:auto">${open?"Ocultar subcategorías":"Ver subcategorías"}</button>
+      </div>
+      ${open ? `<div style="display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 0 2px 4px">${keys.map(k=>
+        `<label style="display:flex;align-items:center;gap:5px;font-size:13px"><input type="checkbox" ${discEdit.subs.includes(cat+"|"+k)?"checked":""} onchange="discEditSub('${cat}|${k}',this.checked)"> ${escapeHtml(subs[k])}</label>`).join("")}</div>` : ""}
     </div>`;
   }).join("");
   box.innerHTML = `<div style="border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff">
@@ -1967,7 +1982,7 @@ function discEditRender(){
       <b>Descuento por cantidad</b>
       <button type="button" class="admin-del" onclick="discEditDel()">Quitar descuento</button>
     </div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Subcategorías donde se aplica (los productos marcados se cuentan juntos)</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Subcategorías donde se aplica (los productos marcados se cuentan juntos) · <b style="color:${total?"var(--gold-deep)":"#c0392b"}">${total} marcadas en total</b></div>
     ${subsHtml}
     <div style="font-size:12px;color:var(--muted);margin:14px 0 6px">Niveles de descuento</div>
     ${discEdit.tiers.map((t,j)=>`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:13px">
@@ -1977,6 +1992,15 @@ function discEditRender(){
       <button type="button" class="admin-del" onclick="discEditTierDel(${j})" title="Quitar nivel">✕</button></div>`).join("")}
     <button type="button" class="admin-edit" onclick="discEditTierAdd()" style="padding-left:0">+ Agregar nivel</button>
   </div>`;
+}
+function discToggleCat(cat){
+  const keys = Object.keys(CATEGORIES[cat].subs);
+  const cur = discOpenCats[cat] !== undefined ? discOpenCats[cat] : (discEdit && keys.some(k=>discEdit.subs.includes(cat+"|"+k)));
+  discOpenCats[cat] = !cur; discEditRender();
+}
+function discEditDiscard(){
+  discEditReset();
+  const msg = document.getElementById("discEditMsg"); msg.style.color = "var(--muted)"; msg.textContent = "Cambios descartados: se muestra lo que está guardado.";
 }
 function discEditAdd(){
   discEdit = {subs:[], tiers:[{qty:2,type:"percent",value:5},{qty:3,type:"percent",value:10}]};
@@ -2025,8 +2049,12 @@ function discEditSave(){
   }
   msg.style.color="var(--gold-deep)"; msg.textContent="Guardando...";
   db.collection("settings").doc("discounts").set({discount, updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{
-    discEditDirty=false; msg.style.color="#2e8b57";
-    msg.textContent = discount ? "✓ Descuento guardado. Ya se aplica en la tienda." : "✓ Descuento quitado.";
+    DISC = discNorm({discount});
+    discEdit = DISC ? JSON.parse(JSON.stringify(DISC)) : null;
+    discEditDirty = false; discEditRender();
+    try{ renderCart(); }catch(e){}
+    msg.style.color="#2e8b57";
+    msg.textContent = discount ? "✓ Descuento guardado ("+discount.subs.length+" subcategorías). Ya se aplica en la tienda." : "✓ Descuento quitado.";
   }).catch(err=>{ bad("Error: "+err.message); });
 }
 
