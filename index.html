@@ -913,7 +913,7 @@
 
       <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
         <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 6px">Descuento por cantidad</h3>
-        <p class="admin-hint" style="margin-bottom:14px">Marca las subcategorías donde se aplica (los productos de todas las marcadas se cuentan juntos) y define los niveles: "al llevar N o más productos, descuento de X", donde X puede ser un porcentaje (%) o un monto fijo en soles (S/, se resta una sola vez). Se aplica el nivel más alto que alcance el cliente. Recuerda pulsar <b>Guardar descuento</b> después de cada cambio.</p>
+        <p class="admin-hint" style="margin-bottom:14px">Hay un solo descuento: lo agregas o lo quitas cuando quieras. Marca las subcategorías donde se aplica (los productos de todas las marcadas se cuentan juntos) y define los niveles: "al llevar N o más productos, descuento de X", donde X puede ser un porcentaje (%) o un monto fijo en soles (S/, se resta una sola vez). Se aplica el nivel más alto que alcance el cliente. Recuerda pulsar <b>Guardar descuento</b> después de cada cambio.</p>
         <div id="discEditor"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
           <button type="button" class="pd-back" id="discAddBtn" onclick="discEditAdd()">+ Agregar descuento</button>
@@ -1115,11 +1115,18 @@
     </div>
     <div id="couponMsg" style="font-size:12px;margin-top:6px"></div>
   </div>
+  <div style="padding:12px 20px 0">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">¿Cómo recibes tu pedido?</div>
+    <div style="display:flex;gap:8px">
+      <label id="dlvEnvio" style="flex:1;display:flex;align-items:center;gap:6px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;cursor:pointer"><input type="radio" name="dlvMode" value="envio" onchange="setDelivery(this.value)"> Envío a domicilio</label>
+      <label id="dlvLocal" style="flex:1;display:flex;align-items:center;gap:6px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;cursor:pointer"><input type="radio" name="dlvMode" value="local" onchange="setDelivery(this.value)"> Compra local (sin envío)</label>
+    </div>
+  </div>
   <div class="drawer-foot">
     <div class="drawer-total" style="font-size:13px;font-weight:500;color:var(--muted)"><span>Subtotal</span><span id="cartSubtotal">S/0.00</span></div>
     <div id="cartBulkRows"></div>
     <div class="drawer-total" id="cartDiscountRow" style="display:none;font-size:13px;font-weight:500;color:#2e8b57"><span id="cartDiscountLabel">Descuento</span><span id="cartDiscount">-S/0.00</span></div>
-    <div class="drawer-total" style="font-size:13px;font-weight:500;color:var(--muted)"><span>Envío a nivel nacional</span><span id="cartShipping">S/13.00</span></div>
+    <div class="drawer-total" style="font-size:13px;font-weight:500;color:var(--muted)"><span id="cartShippingLabel">Envío a nivel nacional</span><span id="cartShipping">S/13.00</span></div>
     <div class="drawer-total"><span>Total estimado</span><span id="cartTotal">S/0.00</span></div>
     <button class="checkout-btn" id="checkoutBtn" onclick="checkout()">Finalizar por WhatsApp</button>
   </div>
@@ -1813,6 +1820,16 @@ function changeQty(id, delta){
 }
 function removeLine(id){ cart = cart.filter(c=>c.id!==id); saveCart(); }
 
+/* Entrega: "envio" (cobra el envío) o "local" (compra local / recojo: sin costo de envío) */
+var deliveryMode = (function(){ try{ return localStorage.getItem("jande_delivery") === "local" ? "local" : "envio"; }catch(e){ return "envio"; } })();
+const SHIPPING_FEE = 13;
+function shippingCost(){ return deliveryMode === "local" ? 0 : SHIPPING_FEE; }
+function setDelivery(v){
+  deliveryMode = v === "local" ? "local" : "envio";
+  try{ localStorage.setItem("jande_delivery", deliveryMode); }catch(e){}
+  renderCart();
+}
+
 function renderCart(){
   const count = cart.reduce((s,c)=>s+c.qty,0);
   document.getElementById("cartCount").textContent = count;
@@ -1834,7 +1851,7 @@ function renderCart(){
         <div class="ci-price">S/${(c.price*c.qty).toFixed(2)}</div>
       </div>`).join("");
   }
-  const SHIPPING_COST = 13;
+  const SHIPPING_COST = shippingCost();
   const subtotal = cart.reduce((s,c)=>s+c.price*c.qty,0);
   const bulk = cart.length ? bulkDiscount(cart) : {total:0, items:[]};
   const discount = (appliedCoupon && cart.length) ? couponDiscount(appliedCoupon, subtotal - bulk.total) : 0;
@@ -1850,6 +1867,14 @@ function renderCart(){
     discRow.style.display = "none";
   }
   document.getElementById("cartShipping").textContent = cart.length ? "S/"+SHIPPING_COST.toFixed(2) : "S/0.00";
+  document.getElementById("cartShippingLabel").textContent = deliveryMode === "local" ? "Compra local (sin envío)" : "Envío a nivel nacional";
+  [["dlvEnvio","envio"],["dlvLocal","local"]].forEach(([id,mode])=>{
+    const el = document.getElementById(id); if(!el) return;
+    const on = deliveryMode === mode;
+    el.querySelector("input").checked = on;
+    el.style.borderColor = on ? "var(--gold-deep)" : "var(--line)";
+    el.style.background = on ? "#fdf0f6" : "transparent";
+  });
   document.getElementById("cartTotal").textContent = "S/"+(cart.length ? Math.max(0,subtotal-bulk.total-discount)+SHIPPING_COST : 0).toFixed(2);
   document.getElementById("checkoutBtn").disabled = cart.length===0;
 }
@@ -2065,7 +2090,7 @@ function closeCart(){ document.getElementById("drawer").classList.remove("show")
 
 function checkout(){
   if(cart.length===0) return;
-  const SHIPPING_COST = 13;
+  const SHIPPING_COST = shippingCost();
   const subtotal = cart.reduce((s,c)=>s+c.price*c.qty,0);
   const bulk = bulkDiscount(cart);
   const discount = appliedCoupon ? couponDiscount(appliedCoupon, subtotal - bulk.total) : 0;
@@ -2075,9 +2100,11 @@ function checkout(){
   let msg = `Hola Jandé Shop! Quiero hacer este pedido:%0A${lines}%0A%0ASubtotal: S/${subtotal.toFixed(2)}`;
   bulk.items.forEach(b=>{ msg += `%0A${encodeURIComponent(b.label+" ("+b.units+" u., -"+b.tag+")")}: -S/${b.amount.toFixed(2)}`; });
   if(discount > 0) msg += `%0ADescuento (${appliedCoupon.code} ${encodeURIComponent(couponLabel(appliedCoupon))}): -S/${discount.toFixed(2)}`;
-  msg += `%0AEnvío: S/${SHIPPING_COST.toFixed(2)}%0ATotal: S/${total.toFixed(2)}`;
+  msg += deliveryMode === "local"
+    ? `%0AEntrega: Compra local (sin costo de envío)%0ATotal: S/${total.toFixed(2)}`
+    : `%0AEnvío: S/${SHIPPING_COST.toFixed(2)}%0ATotal: S/${total.toFixed(2)}`;
   window.open(`https://wa.me/51950090088?text=${msg}`, "_blank");
-  saveOrder(cart, total, { shipping: SHIPPING_COST, couponCode: appliedCoupon ? appliedCoupon.code : null, discount: discount, bulkDiscount: bulk.total });
+  saveOrder(cart, total, { shipping: SHIPPING_COST, delivery: deliveryMode, couponCode: appliedCoupon ? appliedCoupon.code : null, discount: discount, bulkDiscount: bulk.total });
 }
 
 document.getElementById("newsForm").addEventListener("submit", e=>{
@@ -2641,7 +2668,7 @@ function saveOrder(items, total, extra){
   if(u && u.uid !== ADMIN_UID){
     db.collection("orders").add({
       uid: u.uid, email: u.email || null, total: total,
-      shipping: extra.shipping || 0, discount: extra.discount || 0, bulkDiscount: extra.bulkDiscount || 0, couponCode: extra.couponCode || null,
+      shipping: extra.shipping || 0, delivery: extra.delivery || "envio", discount: extra.discount || 0, bulkDiscount: extra.bulkDiscount || 0, couponCode: extra.couponCode || null,
       items: items.map(i=>({id:i.id, name:i.name, price:i.price, qty:i.qty})),
       status: "Enviado por WhatsApp",
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
