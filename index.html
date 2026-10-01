@@ -413,6 +413,11 @@
   .hero-visual .circle{position:relative;overflow:hidden;width:230px;height:230px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #ffffff, var(--blush) 60%, #f3d3e4 100%);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
   .hero-visual svg{width:46%;height:46%}
   .hero-visual .circle img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;display:block}
+  .hero-slide.active.has-img{display:block;max-width:none;margin:0;padding:0;min-height:0;cursor:pointer}
+  .hero-bg{display:block;width:100%;height:auto;object-fit:cover}
+  .hero-slide.has-img>div{display:none}
+  @media (max-width:760px){ .hero-bg{min-height:150px} }
+  .hero-nav,.hero-dots{z-index:3}
   .hero-nav{position:absolute;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.85);border:1px solid var(--line);cursor:pointer;font-size:16px;color:var(--gold-deep)}
   .hero-nav.prev{left:16px}.hero-nav.next{right:16px}
   .hero-dots{position:absolute;bottom:14px;left:0;right:0;display:flex;justify-content:center;gap:8px}
@@ -904,7 +909,7 @@
 
       <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
         <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 6px">Banner del inicio (carrusel)</h3>
-        <p class="admin-hint" style="margin-bottom:14px">Edita los textos, el botón y la imagen de cada diapositiva. Al subir una foto se recorta y ajusta sola a 600 × 600 px (cuadrada, se ve en un círculo).</p>
+        <p class="admin-hint" style="margin-bottom:14px">Edita los textos, el botón y la imagen de cada diapositiva. Al subir una foto se recorta y ajusta sola a 1920 × 360 px (formato ancho, el texto y el botón deben ir dentro de la imagen).</p>
         <div id="heroEditor"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
           <button type="button" class="pd-back" onclick="heroEditAdd()">+ Agregar diapositiva</button>
@@ -1976,7 +1981,7 @@ document.querySelector(".brand").addEventListener("click", goHome);
 document.querySelector(".hero-strip .back").style.cursor = "pointer";
 document.querySelector(".hero-strip .back").addEventListener("click", goHome);
 
-// Para cambiar la imagen de cada diapositiva, edita el campo img (recomendado: 600 x 600 px, cuadrada, JPG/WebP/PNG, menos de 150 KB).
+// Para cambiar la imagen de cada diapositiva, edita el campo img (recomendado: banner ancho 1920 x 360 px, JPG/WebP, menos de 250 KB; el texto y el botón deben ir dentro de la imagen).
 // Si la imagen no existe o falla, se muestra el ícono automáticamente.
 let HERO_SLIDES = [
   {eyebrow:"BELLEZA INTEGRAL", title:"Todo tu ritual de belleza en un solo lugar", text:"Piel, cabello, manos, pies y mirada: descubre nuestro catálogo completo de belleza.", cta:"Ver categorías", sub:"all", icon:"kit", img:""},
@@ -1989,7 +1994,8 @@ const HERO_DEFAULTS = JSON.parse(JSON.stringify(HERO_SLIDES));
 let heroIndex = 0, heroTimer;
 function renderHero(){
   document.getElementById("heroSlides").innerHTML = HERO_SLIDES.map((s,i)=>`
-    <div class="hero-slide ${i===heroIndex?"active":""}">
+    <div class="hero-slide ${i===heroIndex?"active":""} ${s.img?"has-img":""}" ${s.img?`onclick="heroClick(${i})"`:""}>
+      ${s.img? `<img class="hero-bg" src="${escapeHtml(s.img)}" alt="${escapeHtml(s.title)}" onerror="this.parentNode.classList.remove('has-img');this.style.display='none'">`:""}
       <div>
         <div class="hero-eyebrow">${escapeHtml(s.eyebrow)}</div>
         <h2>${escapeHtml(s.title)}</h2>
@@ -2062,7 +2068,7 @@ function heroEditRender(){
         <div><label>El botón lleva a (déjalo vacío arriba para ocultar el botón)</label><select onchange="heroEditDest(${i},this.value)">${heroDestOptions(sel)}</select>
           ${sel.startsWith("url:")? `<input type="text" style="margin-top:6px" placeholder="https://wa.me/51950090088 o https://..." value="${escapeHtml(sel.slice(4))}" oninput="heroEditSet(${i},'link','url:'+this.value.trim())">`:""}</div>
         <div><label>Ícono (se muestra si no hay foto)</label><select onchange="heroEditSet(${i},'icon',this.value)">${Object.keys(ICONS).map(k=>`<option value="${k}"${k===(sl.icon||"kit")?" selected":""}>${k}</option>`).join("")}</select></div>
-        <div class="he-full"><label>Imagen (se recorta a 600 × 600 px)</label>
+        <div class="he-full"><label>Imagen de fondo del banner (se recorta a 1920 × 360 px)</label>
           <input type="file" accept="image/*" onchange="heroEditPick(${i},this)">
           ${sl.img? `<button type="button" class="admin-del" onclick="heroEditSet(${i},'img','');heroEditRender()">Quitar foto</button>`:""}
           <span class="admin-msg" id="heroImgMsg${i}"></span>
@@ -2080,7 +2086,7 @@ function heroEditAdd(){
 }
 function heroEditDel(i){ if(!confirm("¿Eliminar la diapositiva "+(i+1)+"?")) return; heroEdit.splice(i,1); heroEditDirty=true; heroEditRender(); }
 function heroEditMove(i,d){ const j=i+d; if(j<0||j>=heroEdit.length) return; [heroEdit[i],heroEdit[j]]=[heroEdit[j],heroEdit[i]]; heroEditDirty=true; heroEditRender(); }
-function heroCropSquare(file,size){
+function heroCropBanner(file,W,H){
   return new Promise((resolve,reject)=>{
     const r=new FileReader();
     r.onerror=()=>reject(new Error("No se pudo leer el archivo."));
@@ -2088,10 +2094,12 @@ function heroCropSquare(file,size){
       const im=new Image();
       im.onerror=()=>reject(new Error("La imagen no es válida."));
       im.onload=()=>{
-        const m=Math.min(im.width,im.height), c=document.createElement("canvas");
-        c.width=c.height=size;
-        c.getContext("2d").drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,size,size);
-        resolve(c.toDataURL("image/jpeg",0.85));
+        // recorte centrado con la proporción del banner (W:H)
+        let sw=im.width, sh=sw*H/W;
+        if(sh>im.height){ sh=im.height; sw=sh*W/H; }
+        const c=document.createElement("canvas"); c.width=W; c.height=H;
+        c.getContext("2d").drawImage(im,(im.width-sw)/2,(im.height-sh)/2,sw,sh,0,0,W,H);
+        resolve(c.toDataURL("image/jpeg",0.82));
       };
       im.src=r.result;
     };
@@ -2102,7 +2110,7 @@ function heroEditPick(i,input){
   const file=input.files[0]; if(!file) return;
   const msg=document.getElementById("heroImgMsg"+i);
   msg.style.color="var(--gold-deep)"; msg.textContent="Subiendo...";
-  heroCropSquare(file,600).then(uploadProductImage).then(url=>{
+  heroCropBanner(file,1920,360).then(uploadProductImage).then(url=>{
     heroEdit[i].img=url; heroEditDirty=true; heroEditRender();
   }).catch(err=>{ msg.style.color="#c0392b"; msg.textContent="Error: "+err.message; });
 }
