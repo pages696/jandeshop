@@ -1,7 +1,7 @@
 // Service worker de Jandé Shop.
 // Sube el número de versión cada vez que quieras forzar a los celulares
 // que ya instalaron la app a limpiar su caché vieja.
-const CACHE_NAME = "jandeshop-v1";
+const CACHE_NAME = "jandeshop-v2";
 const STATIC_ASSETS = [
   "favicon.ico",
   "favicon-16x16.png",
@@ -35,7 +35,9 @@ self.addEventListener("fetch", event => {
   // para que nunca se quede pegada una versión vieja del sitio.
   if (req.mode === "navigate") {
     event.respondWith(
-      fetch(req).catch(() => caches.match("index.html"))
+      // cache:"no-cache" obliga a revalidar con el servidor, así el hosting
+      // (Firebase Hosting, etc.) no entrega una copia vieja guardada en su caché HTTP.
+      fetch(req, { cache: "no-cache" }).catch(() => caches.match("index.html"))
     );
     return;
   }
