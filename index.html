@@ -918,14 +918,14 @@
 
       <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
         <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin:0 0 6px">Descuento por cantidad</h3>
-        <p class="admin-hint" style="margin-bottom:14px">Marca las subcategorías donde se aplica (los productos de todas las marcadas se cuentan juntos) y define los niveles: "al llevar N o más productos, descuento de X", donde X puede ser un porcentaje (%) o un monto fijo en soles (S/, se resta una sola vez). Se aplica el nivel más alto que alcance el cliente. Recuerda pulsar <b>Guardar descuento</b> después de cada cambio.</p>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <p class="admin-hint" style="margin-bottom:14px">Puedes agregar varios descuentos. En cada uno marca las subcategorías donde se aplica (los productos de todas las marcadas se cuentan juntos) y define los niveles: "al llevar N o más productos, descuento de X", donde X puede ser un porcentaje (%) o un monto fijo en soles (S/, se resta una sola vez). Se aplica el nivel más alto que alcance el cliente. Si un producto entra en más de un descuento, solo cuenta para el primero de la lista. Recuerda pulsar <b>Guardar descuentos</b> después de cada cambio.</p>
+        <div id="discEditor"><div class="admin-empty">Cargando descuentos…</div></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
           <button type="button" class="pd-back" id="discAddBtn" onclick="discEditAdd()" style="display:none">+ Agregar descuento</button>
-          <button type="button" class="pd-buy" onclick="discEditSave()">Guardar descuento</button>
+          <button type="button" class="pd-buy" onclick="discEditSave()">Guardar descuentos</button>
           <button type="button" class="pd-back" onclick="discEditDiscard()">Descartar cambios</button>
           <span class="admin-msg" id="discEditMsg"></span>
         </div>
-        <div id="discEditor"><div class="admin-empty">Cargando descuento…</div></div>
       </div>
 
       <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--line)">
@@ -1909,13 +1909,13 @@ function renderCart(){
   document.getElementById("checkoutBtn").disabled = cart.length===0;
 }
 
-/* ===== Descuento por cantidad (uno solo, editable desde el panel admin) =====
-   Se guarda en Firestore (settings/discounts) como {discount:{subs:["cat|sub",...], tiers:[...]}}.
+/* ===== Descuentos por cantidad (varios, editables desde el panel admin) =====
+   Se guarda en Firestore (settings/discounts) como {discounts:[{name, subs:["cat|sub",...], tiers:[...]}, ...]}.
    Cuentan juntos todos los productos del carrito que pertenezcan a las subcategorías marcadas.
    Niveles {qty,type,value}: "al llevar qty o más productos, descuento de value" (% o S/ fijo).
    Se aplica el nivel más alto alcanzado. */
-let DISC = null;
-let discEdit = null, discEditDirty = false;
+let DISC = [];   // lista de descuentos por cantidad
+let discEdit = [], discEditDirty = false;
 let discLoaded = false, discOpenCats = {};
 /* Tipos internos dentro de una subcategoría: solo sirven para elegir a qué productos
    se aplica el descuento. No son subcategorías de la tienda (no salen en menús ni filtros). */
@@ -1937,24 +1937,33 @@ function discCleanTiers(t){
     return {qty:parseInt(x.qty)||0, type, value};
   }).filter(x=>x.qty>=1 && x.value>0);
 }
+function discNormOne(x){
+  if(!x || typeof x !== "object") return null;
+  const subs = (Array.isArray(x.subs)?x.subs:[]).filter(discSubValid);
+  const tiers = discCleanTiers(x.tiers);
+  if(!(subs.length && tiers.length)) return null;
+  return {name:String(x.name||"").trim().slice(0,60), subs, tiers};
+}
 function discNorm(d){
-  if(!d) return null;
-  if(d.discount && typeof d.discount === "object"){
-    const subs = (Array.isArray(d.discount.subs)?d.discount.subs:[]).filter(discSubValid);
-    const tiers = discCleanTiers(d.discount.tiers);
-    return (subs.length && tiers.length) ? {subs, tiers} : null;
+  if(!d) return [];
+  if(Array.isArray(d.discounts)) return d.discounts.map(discNormOne).filter(Boolean);
+  if(d.discount && typeof d.discount === "object"){   // formato anterior: un solo descuento
+    const one = discNormOne(d.discount);
+    return one ? [one] : [];
   }
-  // formato anterior (varias reglas): se conserva solo la primera
+  // formato más antiguo (varias reglas por categoría)
   const raw = d.rules;
   const list = Array.isArray(raw) ? raw
     : (raw && typeof raw === "object" ? Object.keys(raw).map(cat=>({cat, subs:[], tiers:[{qty:raw[cat].qtyA,pct:raw[cat].pctA},{qty:raw[cat].qtyB,pct:raw[cat].pctB}]})) : []);
+  const out = [];
   for(const r of list){
     if(!CATEGORIES[r.cat]) continue;
     const tiers = discCleanTiers(r.tiers); if(!tiers.length) continue;
     const keys = (r.subs && r.subs.length) ? r.subs : Object.keys(CATEGORIES[r.cat].subs);
-    return {subs:keys.map(k=>r.cat+"|"+k).filter(discSubValid), tiers};
+    const subs = keys.map(k=>r.cat+"|"+k).filter(discSubValid);
+    if(subs.length) out.push({name:"", subs, tiers});
   }
-  return null;
+  return out;
 }
 function cartLineCat(c){
   const p = PRODUCTS.find(x=>x.id===c.id);
@@ -1969,16 +1978,24 @@ function cartLineSub(c){
   return p ? p.sub : c.sub;
 }
 function bulkDiscount(items){
-  if(!DISC) return {items:[], total:0};
-  let units = 0, sum = 0;
+  if(!DISC || !DISC.length) return {items:[], total:0};
+  // Cada producto del carrito cuenta solo para el primer descuento que le corresponde (así no se acumulan dos descuentos sobre lo mismo).
+  const acc = DISC.map(()=>({units:0, sum:0}));
   items.forEach(c=>{
     const k = cartLineCat(c)+"|"+cartLineSub(c), tipo = cartLineTipo(c);
-    if(DISC.subs.includes(k) || (tipo && DISC.subs.includes(k+"|"+tipo))){ units += c.qty; sum += c.price*c.qty; }
+    const i = DISC.findIndex(d=>d.subs.includes(k) || (tipo && d.subs.includes(k+"|"+tipo)));
+    if(i >= 0){ acc[i].units += c.qty; acc[i].sum += c.price*c.qty; }
   });
-  const hit = DISC.tiers.filter(t=>units >= t.qty).sort((x,y)=>y.qty-x.qty)[0];
-  if(!hit) return {items:[], total:0};
-  const amount = hit.type === "fixed" ? Math.min(hit.value, sum) : Math.round(sum*hit.value)/100;
-  return {items:[{label:"Descuento por cantidad", units, amount, tag: hit.type === "fixed" ? "S/"+hit.value.toFixed(2) : hit.value+"%"}], total:amount};
+  const out = []; let total = 0;
+  DISC.forEach((d,i)=>{
+    const {units, sum} = acc[i];
+    const hit = d.tiers.filter(t=>units >= t.qty).sort((x,y)=>y.qty-x.qty)[0];
+    if(!hit) return;
+    const amount = hit.type === "fixed" ? Math.min(hit.value, sum) : Math.round(sum*hit.value)/100;
+    total += amount;
+    out.push({label:d.name || "Descuento por cantidad", units, amount, tag: hit.type === "fixed" ? "S/"+hit.value.toFixed(2) : hit.value+"%"});
+  });
+  return {items:out, total};
 }
 db.collection("settings").doc("discounts").onSnapshot(doc=>{
   DISC = discNorm(doc.exists ? doc.data() : null);
@@ -1991,117 +2008,127 @@ db.collection("settings").doc("discounts").onSnapshot(doc=>{
 });
 
 function discEditReset(){
-  discEdit = DISC ? JSON.parse(JSON.stringify(DISC)) : null;
+  discEdit = JSON.parse(JSON.stringify(DISC || []));
   discEditDirty = false;
   discEditRender();
 }
-function discEditRender(){
-  const box = document.getElementById("discEditor"); if(!box) return;
-  const addBtn = document.getElementById("discAddBtn"); if(addBtn) addBtn.style.display = (discLoaded && !discEdit) ? "" : "none";
-  if(!discLoaded){ box.innerHTML = `<div class="admin-empty">Cargando descuento…</div>`; return; }
-  if(!discEdit){ box.innerHTML = `<div class="admin-empty">No hay ningún descuento activo. Pulsa "+ Agregar descuento".</div>`; return; }
+function discCardHtml(d,i){
   const fld = "padding:7px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit";
   let total = 0;
   const subsHtml = CAT_ORDER.map(cat=>{
     const subs = CATEGORIES[cat].subs, keys = Object.keys(subs);
-    const selected = discEdit.subs.filter(x=>x.indexOf(cat+"|") === 0).length;
+    const selected = d.subs.filter(x=>x.indexOf(cat+"|") === 0).length;
     total += selected;
-    const all = keys.length > 0 && keys.every(k=>discEdit.subs.includes(cat+"|"+k));
-    const open = discOpenCats[cat] !== undefined ? discOpenCats[cat] : selected > 0;
+    const all = keys.length > 0 && keys.every(k=>d.subs.includes(cat+"|"+k));
+    const ok = i+"|"+cat;
+    const open = discOpenCats[ok] !== undefined ? discOpenCats[ok] : selected > 0;
     return `<div style="margin-bottom:8px;border:1px solid var(--line);border-radius:10px;padding:8px 12px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600"><input type="checkbox" ${all?"checked":""} onchange="discEditCatAll('${cat}',this.checked)"> ${escapeHtml(CATEGORIES[cat].label)} (todas)</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600"><input type="checkbox" ${all?"checked":""} onchange="discEditCatAll(${i},'${cat}',this.checked)"> ${escapeHtml(CATEGORIES[cat].label)} (todas)</label>
         <span style="font-size:12px;color:${selected?"var(--gold-deep)":"var(--muted)"}">${selected} ${selected===1?"marcada":"marcadas"}</span>
-        <button type="button" class="admin-edit" onclick="discToggleCat('${cat}')" style="margin-left:auto">${open?"Ocultar subcategorías":"Ver subcategorías"}</button>
+        <button type="button" class="admin-edit" onclick="discToggleCat(${i},'${cat}')" style="margin-left:auto">${open?"Ocultar subcategorías":"Ver subcategorías"}</button>
       </div>
       ${open ? `<div style="display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 0 2px 4px">${keys.map(k=>{
-        const types = DISC_TYPES[cat+"|"+k], parentOn = discEdit.subs.includes(cat+"|"+k);
-        const lbl = `<label style="display:flex;align-items:center;gap:5px;font-size:13px"><input type="checkbox" ${parentOn?"checked":""} onchange="discEditSub('${cat}|${k}',this.checked)"> ${escapeHtml(subs[k])}</label>`;
+        const types = DISC_TYPES[cat+"|"+k], parentOn = d.subs.includes(cat+"|"+k);
+        const lbl = `<label style="display:flex;align-items:center;gap:5px;font-size:13px"><input type="checkbox" ${parentOn?"checked":""} onchange="discEditSub(${i},'${cat}|${k}',this.checked)"> ${escapeHtml(subs[k])}</label>`;
         if(!types) return lbl;
         return `<div style="flex-basis:100%">${lbl}<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:6px 0 4px 26px;${parentOn?"opacity:.55":""}">
           <span style="font-size:12px;color:var(--muted)">Solo estos tipos (se asigna en cada producto):</span>${Object.keys(types).map(t=>
-          `<label style="display:flex;align-items:center;gap:5px;font-size:13px"><input type="checkbox" ${discEdit.subs.includes(cat+"|"+k+"|"+t)?"checked":""} onchange="discEditSub('${cat}|${k}|${t}',this.checked)"> ${escapeHtml(types[t])}</label>`).join("")}</div></div>`;
+          `<label style="display:flex;align-items:center;gap:5px;font-size:13px"><input type="checkbox" ${d.subs.includes(cat+"|"+k+"|"+t)?"checked":""} onchange="discEditSub(${i},'${cat}|${k}|${t}',this.checked)"> ${escapeHtml(types[t])}</label>`).join("")}</div></div>`;
       }).join("")}</div>` : ""}
     </div>`;
   }).join("");
-  box.innerHTML = `<div style="border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff">
+  return `<div style="border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff;margin-bottom:16px">
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <b>Descuento por cantidad</b>
-      <button type="button" class="admin-del" onclick="discEditDel()">Quitar descuento</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>Descuento ${i+1}</b>
+        <input type="text" maxlength="60" placeholder="Nombre (opcional, se ve en el carrito)" value="${escapeHtml(d.name||"")}" oninput="discEditName(${i},this.value)" style="width:260px;max-width:100%;${fld}"></div>
+      <button type="button" class="admin-del" onclick="discEditDel(${i})">Quitar descuento</button>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Subcategorías donde se aplica (los productos marcados se cuentan juntos) · <b style="color:${total?"var(--gold-deep)":"#c0392b"}">${total} ${total===1?"marcada":"marcadas"} en total</b></div>
     ${subsHtml}
     <div style="font-size:12px;color:var(--muted);margin:14px 0 6px">Niveles de descuento</div>
-    ${discEdit.tiers.map((t,j)=>`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:13px">
-      Al llevar <input type="number" min="1" max="99" step="1" value="${t.qty}" oninput="discEditTier(${j},'qty',this.value)" style="width:70px;${fld}"> o más productos
-      → descuento de <input type="number" min="0.01" ${t.type==="fixed"?"":'max="90" '}step="any" value="${t.value}" oninput="discEditTier(${j},'value',this.value)" style="width:90px;${fld}">
-      <select onchange="discEditTierType(${j},this.value)" style="${fld}"><option value="percent"${t.type!=="fixed"?" selected":""}>% (porcentaje)</option><option value="fixed"${t.type==="fixed"?" selected":""}>S/ (monto fijo)</option></select>
-      <button type="button" class="admin-del" onclick="discEditTierDel(${j})" title="Quitar nivel">✕</button></div>`).join("")}
-    <button type="button" class="admin-edit" onclick="discEditTierAdd()" style="padding-left:0">+ Agregar nivel</button>
+    ${d.tiers.map((t,j)=>`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:13px">
+      Al llevar <input type="number" min="1" max="99" step="1" value="${t.qty}" oninput="discEditTier(${i},${j},'qty',this.value)" style="width:70px;${fld}"> o más productos
+      → descuento de <input type="number" min="0.01" ${t.type==="fixed"?"":'max="90" '}step="any" value="${t.value}" oninput="discEditTier(${i},${j},'value',this.value)" style="width:90px;${fld}">
+      <select onchange="discEditTierType(${i},${j},this.value)" style="${fld}"><option value="percent"${t.type!=="fixed"?" selected":""}>% (porcentaje)</option><option value="fixed"${t.type==="fixed"?" selected":""}>S/ (monto fijo)</option></select>
+      <button type="button" class="admin-del" onclick="discEditTierDel(${i},${j})" title="Quitar nivel">✕</button></div>`).join("")}
+    <button type="button" class="admin-edit" onclick="discEditTierAdd(${i})" style="padding-left:0">+ Agregar nivel</button>
   </div>`;
 }
-function discToggleCat(cat){
-  const keys = Object.keys(CATEGORIES[cat].subs);
-  const cur = discOpenCats[cat] !== undefined ? discOpenCats[cat] : (discEdit && discEdit.subs.some(x=>x.indexOf(cat+"|") === 0));
-  discOpenCats[cat] = !cur; discEditRender();
+function discEditRender(){
+  const box = document.getElementById("discEditor"); if(!box) return;
+  const addBtn = document.getElementById("discAddBtn"); if(addBtn) addBtn.style.display = discLoaded ? "" : "none";
+  if(!discLoaded){ box.innerHTML = `<div class="admin-empty">Cargando descuentos…</div>`; return; }
+  if(!discEdit.length){ box.innerHTML = `<div class="admin-empty">No hay ningún descuento activo. Pulsa "+ Agregar descuento".</div>`; return; }
+  box.innerHTML = discEdit.map(discCardHtml).join("");
+}
+function discToggleCat(i,cat){
+  const ok = i+"|"+cat;
+  const cur = discOpenCats[ok] !== undefined ? discOpenCats[ok] : discEdit[i].subs.some(x=>x.indexOf(cat+"|") === 0);
+  discOpenCats[ok] = !cur; discEditRender();
 }
 function discEditDiscard(){
+  discOpenCats = {};
   discEditReset();
   const msg = document.getElementById("discEditMsg"); msg.style.color = "var(--muted)"; msg.textContent = "Cambios descartados: se muestra lo que está guardado.";
 }
 function discEditAdd(){
-  discEdit = {subs:[], tiers:[{qty:2,type:"percent",value:5},{qty:3,type:"percent",value:10}]};
+  discEdit.push({name:"", subs:[], tiers:[{qty:2,type:"percent",value:5},{qty:3,type:"percent",value:10}]});
   discEditDirty = true; discEditRender();
 }
-function discEditDel(){
-  if(!confirm("¿Quitar el descuento? Se aplicará al pulsar \"Guardar descuento\".")) return;
-  discEdit = null; discEditDirty = true; discEditRender();
+function discEditDel(i){
+  if(!confirm("¿Quitar el descuento " + (i+1) + "? Se aplicará al pulsar \"Guardar descuentos\".")) return;
+  discEdit.splice(i,1); discOpenCats = {};
+  discEditDirty = true; discEditRender();
 }
-function discEditCatAll(cat,on){
+function discEditName(i,v){ discEdit[i].name = v; discEditDirty = true; }
+function discEditCatAll(i,cat,on){
+  const d = discEdit[i];
   const keys = Object.keys(CATEGORIES[cat].subs).map(k=>cat+"|"+k);
-  discEdit.subs = discEdit.subs.filter(x=>x.indexOf(cat+"|") !== 0);   // quita subcategorías y tipos de esta categoría
-  if(on) discEdit.subs = discEdit.subs.concat(keys);
+  d.subs = d.subs.filter(x=>x.indexOf(cat+"|") !== 0);   // quita subcategorías y tipos de esta categoría
+  if(on) d.subs = d.subs.concat(keys);
   discEditDirty = true; discEditRender();
 }
-function discEditSub(key,on){
-  const a = discEdit.subs, at = a.indexOf(key);
+function discEditSub(i,key,on){
+  const a = discEdit[i].subs, at = a.indexOf(key);
   if(on && at<0) a.push(key); if(!on && at>=0) a.splice(at,1);
   discEditDirty = true; discEditRender();
 }
-function discEditTier(j,k,v){ discEdit.tiers[j][k] = v === "" ? 0 : Number(v); discEditDirty = true; }
-function discEditTierType(j,v){ discEdit.tiers[j].type = v === "fixed" ? "fixed" : "percent"; discEditDirty = true; discEditRender(); }
-function discEditTierAdd(){
-  const t = discEdit.tiers, last = t[t.length-1];
+function discEditTier(i,j,k,v){ discEdit[i].tiers[j][k] = v === "" ? 0 : Number(v); discEditDirty = true; }
+function discEditTierType(i,j,v){ discEdit[i].tiers[j].type = v === "fixed" ? "fixed" : "percent"; discEditDirty = true; discEditRender(); }
+function discEditTierAdd(i){
+  const t = discEdit[i].tiers, last = t[t.length-1];
   t.push({qty:last ? last.qty+1 : 2, type:last ? last.type : "percent", value:last ? last.value : 5}); discEditDirty = true; discEditRender();
 }
-function discEditTierDel(j){ discEdit.tiers.splice(j,1); discEditDirty = true; discEditRender(); }
+function discEditTierDel(i,j){ discEdit[i].tiers.splice(j,1); discEditDirty = true; discEditRender(); }
 function discEditSave(){
   const msg = document.getElementById("discEditMsg");
   const bad = t => { msg.style.color="#c0392b"; msg.textContent=t; };
-  let discount = null;
-  if(discEdit){
-    if(!discEdit.subs.length) return bad("Marca al menos una subcategoría.");
-    if(!discEdit.tiers.length) return bad("Agrega al menos un nivel de descuento.");
+  for(let i=0;i<discEdit.length;i++){
+    const d = discEdit[i], pre = "Descuento "+(i+1)+": ";
+    if(!d.subs.length) return bad(pre+"marca al menos una subcategoría.");
+    if(!d.tiers.length) return bad(pre+"agrega al menos un nivel de descuento.");
     const seen = {};
-    for(const t of discEdit.tiers){
+    for(const t of d.tiers){
       const okVal = t.type === "fixed" ? Number(t.value) > 0 : (Number(t.value) > 0 && Number(t.value) <= 90);
-      if(!(parseInt(t.qty)>=1) || !okVal) return bad("Cada nivel necesita cantidad desde 1 y un descuento mayor a 0 (en %, máximo 90).");
-      if(seen[parseInt(t.qty)]) return bad("Hay dos niveles con la misma cantidad.");
+      if(!(parseInt(t.qty)>=1) || !okVal) return bad(pre+"cada nivel necesita cantidad desde 1 y un descuento mayor a 0 (en %, máximo 90).");
+      if(seen[parseInt(t.qty)]) return bad(pre+"hay dos niveles con la misma cantidad.");
       seen[parseInt(t.qty)] = true;
     }
-    discount = {
-      subs: discEdit.subs.filter(discSubValid),
-      tiers: discEdit.tiers.map(t=>({qty:parseInt(t.qty), type:t.type === "fixed" ? "fixed" : "percent", value:Number(t.value)})).sort((x,y)=>x.qty-y.qty)
-    };
   }
+  const discounts = discEdit.map(d=>({
+    name: String(d.name||"").trim().slice(0,60),
+    subs: d.subs.filter(discSubValid),
+    tiers: d.tiers.map(t=>({qty:parseInt(t.qty), type:t.type === "fixed" ? "fixed" : "percent", value:Number(t.value)})).sort((x,y)=>x.qty-y.qty)
+  }));
   msg.style.color="var(--gold-deep)"; msg.textContent="Guardando...";
-  db.collection("settings").doc("discounts").set({discount, updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{
-    DISC = discNorm({discount});
-    discEdit = DISC ? JSON.parse(JSON.stringify(DISC)) : null;
+  db.collection("settings").doc("discounts").set({discounts, updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{
+    DISC = discNorm({discounts});
+    discEdit = JSON.parse(JSON.stringify(DISC));
     discEditDirty = false; discEditRender();
     try{ renderCart(); }catch(e){}
     msg.style.color="#2e8b57";
-    msg.textContent = discount ? "✓ Descuento guardado ("+discount.subs.length+" subcategorías). Ya se aplica en la tienda." : "✓ Descuento quitado.";
+    msg.textContent = discounts.length ? "✓ "+discounts.length+(discounts.length===1?" descuento guardado.":" descuentos guardados.")+" Ya se aplican en la tienda." : "✓ Descuentos quitados.";
   }).catch(err=>{ bad("Error: "+err.message); });
 }
 
