@@ -805,7 +805,7 @@
         </div>
 
         <div class="pd-benefits">
-          <div class="foot-item"><span class="ico">🚚</span><div><b>Envíos a Domicilio</b><span>S/13 a nivel nacional</span></div></div>
+          <div class="foot-item"><span class="ico">🚚</span><div><b>Envíos a Domicilio</b><span>S/10 a nivel nacional</span></div></div>
           <div class="foot-item"><span class="ico">🛡️</span><div><b>Seguridad en tus compras</b><span>Contamos con seguridad garantizada</span></div></div>
           <div class="foot-item"><span class="ico">💳</span><div><b>Aceptamos Tarjetas de Crédito y Débito</b><span>Pagos vía App y Transferencia Bancaria</span></div></div>
         </div>
@@ -1043,7 +1043,7 @@
 
 <div class="benefits">
   <div class="wrap foot-grid">
-    <div class="foot-item"><span class="ico">🚚</span><div><b>Envíos rápidos</b><span>S/13 a nivel nacional</span></div></div>
+    <div class="foot-item"><span class="ico">🚚</span><div><b>Envíos rápidos</b><span>S/10 a nivel nacional</span></div></div>
     <div class="foot-item"><span class="ico">🔒</span><div><b>Pago seguro</b><span>Pagos 100% protegidos</span></div></div>
     <div class="foot-item"><span class="ico">🕐</span><div><b>Entrega 24 horas</b><span>Total disponibilidad</span></div></div>
     <div class="foot-item"><span class="ico">🛡️</span><div><b>Compra 100% segura</b><span>Garantía en cada pedido</span></div></div>
@@ -1135,7 +1135,7 @@
     <div class="drawer-total" style="font-size:13px;font-weight:500;color:var(--muted)"><span>Subtotal</span><span id="cartSubtotal">S/0.00</span></div>
     <div id="cartBulkRows"></div>
     <div class="drawer-total" id="cartDiscountRow" style="display:none;font-size:13px;font-weight:500;color:#2e8b57"><span id="cartDiscountLabel">Descuento</span><span id="cartDiscount">-S/0.00</span></div>
-    <div class="drawer-total" style="font-size:13px;font-weight:500;color:var(--muted)"><span id="cartShippingLabel">Envío a nivel nacional</span><span id="cartShipping">S/13.00</span></div>
+    <div class="drawer-total" style="font-size:13px;font-weight:500;color:var(--muted)"><span id="cartShippingLabel">Envío a nivel nacional</span><span id="cartShipping">S/10.00</span></div>
     <div class="drawer-total"><span>Total estimado</span><span id="cartTotal">S/0.00</span></div>
     <button class="checkout-btn" id="checkoutBtn" onclick="checkout()">Finalizar por WhatsApp</button>
   </div>
@@ -1852,7 +1852,7 @@ function removeLine(id){ cart = cart.filter(c=>c.id!==id); saveCart(); }
 
 /* Entrega: "envio" (cobra el envío) o "local" (compra local / recojo: sin costo de envío) */
 var deliveryMode = (function(){ try{ return localStorage.getItem("jande_delivery") === "local" ? "local" : "envio"; }catch(e){ return "envio"; } })();
-const SHIPPING_FEE = 13;
+const SHIPPING_FEE = 10;
 function shippingCost(){ return deliveryMode === "local" ? 0 : SHIPPING_FEE; }
 function setDelivery(v){
   deliveryMode = v === "local" ? "local" : "envio";
