@@ -353,10 +353,18 @@
   .about-wrap h3{font-size:14px;letter-spacing:.5px;color:var(--ink);font-family:'Poppins',sans-serif;font-weight:600;margin-bottom:6px}
   .about-wrap .brandname{color:var(--gold-deep);font-size:26px;margin-bottom:14px}
   .about-wrap p{font-size:14px;line-height:1.85;color:var(--muted)}
-  .about-logo{display:flex;align-items:center;justify-content:center;gap:14px}
-  .about-logo .mark{width:80px;height:80px;font-size:36px}
+  .about-logo{display:flex;align-items:center;justify-content:center;gap:22px;flex-wrap:wrap;min-width:0}
+  .about-logo .mark{width:170px;height:170px;border-radius:50%;overflow:hidden;flex:none;display:block;box-shadow:0 8px 24px rgba(194,17,106,.18)}
+  .about-logo .mark img{width:100%;height:100%;object-fit:cover;display:block}
   .about-logo .lg-text{font-family:'Cormorant Garamond',serif;font-size:42px;font-weight:700;color:var(--ink);line-height:1}
   .about-logo small{display:block;font-size:12px;letter-spacing:4px;color:var(--gold);font-weight:600;margin-top:4px}
+  @media (max-width:800px){
+    .about-wrap{gap:28px;padding:36px 20px}
+    .about-logo{flex-direction:column;text-align:center;gap:16px}
+    .about-logo .mark{width:150px;height:150px}
+    .about-logo .lg-text{font-size:36px}
+    .about-logo small{font-size:11px;letter-spacing:3px}
+  }
 
   .values-band{background:var(--gold-deep)}
   .values-grid{max-width:1180px;margin:0 auto;padding:44px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:22px}
@@ -1080,10 +1088,10 @@
       <h4>Nosotros</h4>
       <ul><li><a href="#" onclick="return false" data-nav="inicio">Inicio</a></li><li><a href="#" id="navNosotros">Nosotros</a></li><li><a href="#" onclick="return false">Productos</a></li><li><a href="#" id="navContacto">Contacto</a></li><li><a href="privacidad.html">Política de privacidad</a></li><li><a href="preguntas-frecuentes.html">Preguntas Frecuentes</a></li><li><a href="terminos.html">Términos y condiciones</a></li></ul>
     </div>
-    <div>
+    <div style="display:flex;flex-direction:column">
       <h4>Categorías</h4>
       <ul id="footerCatList"></ul>
-      <a class="libro-reclamos" href="#" onclick="event.preventDefault(); openReclamos();">
+      <a class="libro-reclamos" style="margin-top:auto;padding-top:22px" href="#" onclick="event.preventDefault(); openReclamos();">
         <svg viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M32 10C27 5 18 3 4 4v34c14-1 23 1 28 6" stroke="#173f7a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M32 10c5-5 14-7 28-6v34c-14-1-23 1-28 6" stroke="#173f7a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
