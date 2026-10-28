@@ -2289,6 +2289,7 @@ function showView(name){
 let suppressHistory = false;
 let pendingPush = null;
 function pushViewState(vs){
+  try{ sessionStorage.setItem("jande_view", JSON.stringify(vs)); }catch(e){}
   if(suppressHistory) return;
   pendingPush = vs;
   Promise.resolve().then(()=>{
@@ -3253,8 +3254,71 @@ function seedProducts(){
   batch.commit();
 }
 
-history.replaceState({view: (window.location.hash === "#admin" ? "admin" : "home")}, "");
-if(window.location.hash === "#admin"){ openAdmin(); }
+/* ===== Al refrescar la página, se queda donde estabas (vista y posición) ===== */
+if("scrollRestoration" in history) history.scrollRestoration = "manual";
+window.addEventListener("pagehide", ()=>{
+  try{ sessionStorage.setItem("jande_scroll", String(window.scrollY || 0)); }catch(e){}
+});
+(function restoreAfterReload(){
+  if(window.location.hash === "#admin"){
+    history.replaceState({view:"admin"}, "");
+    openAdmin();
+    return;
+  }
+  let saved = null, savedY = 0, isReload = false;
+  try{
+    const nav = performance.getEntriesByType("navigation")[0];
+    isReload = !!nav && nav.type === "reload";
+    saved = JSON.parse(sessionStorage.getItem("jande_view") || "null");
+    savedY = parseInt(sessionStorage.getItem("jande_scroll") || "0", 10) || 0;
+  }catch(e){}
+  if(!isReload || !saved || !saved.view || saved.view === "admin"){
+    history.replaceState({view:"home"}, "");
+    try{ sessionStorage.setItem("jande_view", JSON.stringify({view:"home"})); sessionStorage.setItem("jande_scroll","0"); }catch(e){}
+    return;
+  }
+  let userMoved = false;
+  const markMoved = ()=>{ userMoved = true; };
+  window.addEventListener("wheel", markMoved, {once:true, passive:true});
+  window.addEventListener("touchstart", markMoved, {once:true, passive:true});
+  window.addEventListener("keydown", markMoved, {once:true});
+  const applyScroll = ()=>{ if(!userMoved && savedY > 0) window.scrollTo({top:savedY, behavior:"instant"}); };
+  const finish = ()=>{
+    applyScroll();
+    setTimeout(applyScroll, 300);
+    setTimeout(applyScroll, 900);
+    window.addEventListener("load", applyScroll, {once:true});
+  };
+  history.replaceState(saved, "");
+  if(saved.view === "product"){
+    // el producto depende de que el catálogo termine de cargar desde Firestore
+    let tries = 0;
+    const timer = setInterval(()=>{
+      tries++;
+      if(typeof PRODUCTS !== "undefined" && PRODUCTS.find(p=>p.id===saved.id)){
+        clearInterval(timer);
+        suppressHistory = true;
+        try{ openProduct(saved.id); } finally { suppressHistory = false; }
+        finish();
+      } else if(tries > 80){
+        clearInterval(timer);
+        history.replaceState({view:"home"}, "");
+      }
+    }, 100);
+    return;
+  }
+  suppressHistory = true;
+  try{
+    switch(saved.view){
+      case "shop": goShop(saved.sub, saved.cat); break;
+      case "about": openAbout(); break;
+      case "contact": openContact(); break;
+      case "reclamos": openReclamos(); break;
+      default: break; // inicio
+    }
+  } finally { suppressHistory = false; }
+  finish();
+})();
 
 if("serviceWorker" in navigator){
   window.addEventListener("load", ()=>{
