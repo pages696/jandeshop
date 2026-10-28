@@ -526,6 +526,21 @@
 </script>
 </head>
 <body>
+<div id="appLoader" aria-hidden="true" style="position:fixed;inset:0;z-index:99999;background:#ffffff;display:flex;align-items:center;justify-content:center;transition:opacity .25s ease">
+  <div style="width:34px;height:34px;border-radius:50%;border:3px solid #f6d3e5;border-top-color:#c2116a;animation:appLoaderSpin .8s linear infinite"></div>
+</div>
+<style>@keyframes appLoaderSpin{to{transform:rotate(360deg)}}</style>
+<script>
+window.hideAppLoader = function(){
+  var l = document.getElementById("appLoader");
+  if(!l || l.getAttribute("data-done")) return;
+  l.setAttribute("data-done","1");
+  l.style.opacity = "0";
+  setTimeout(function(){ if(l.parentNode) l.parentNode.removeChild(l); }, 300);
+};
+/* por seguridad: si la base de datos no responde, no dejamos la página en blanco para siempre */
+setTimeout(window.hideAppLoader, 12000);
+</script>
 <div id="pageVeil" style="position:fixed;inset:0;background:#fff;z-index:99999;transition:opacity .35s ease"></div>
 
 <div class="topbar">
@@ -1282,8 +1297,10 @@ db.collection("products").onSnapshot(snap=>{
     const fresh = PRODUCTS.find(p=>p.id===pdCurrent.id); if(fresh) openProduct(fresh.id, true);
   }
   renderAdminProductList();
+  if(!window.__restoringProduct) window.hideAppLoader();
 }, err=>{
   console.error("Error cargando productos de Firestore:", err);
+  window.hideAppLoader();
 });
 
 const CATEGORIES = {
@@ -3292,6 +3309,7 @@ window.addEventListener("pagehide", ()=>{
   history.replaceState(saved, "");
   if(saved.view === "product"){
     // el producto depende de que el catálogo termine de cargar desde Firestore
+    window.__restoringProduct = true;
     let tries = 0;
     const timer = setInterval(()=>{
       tries++;
@@ -3300,9 +3318,13 @@ window.addEventListener("pagehide", ()=>{
         suppressHistory = true;
         try{ openProduct(saved.id); } finally { suppressHistory = false; }
         finish();
+        window.__restoringProduct = false;
+        window.hideAppLoader();
       } else if(tries > 80){
         clearInterval(timer);
         history.replaceState({view:"home"}, "");
+        window.__restoringProduct = false;
+        window.hideAppLoader();
       }
     }, 100);
     return;
